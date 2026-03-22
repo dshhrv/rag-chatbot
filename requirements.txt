@@ -1,0 +1,15 @@
+beautifulsoup4==4.14.3
+lxml==6.0.2
+matplotlib==3.10.8
+numpy==2.4.2
+pandas==3.0.0
+pymorphy3==2.0.6
+python-dotenv==1.2.1
+python_docx==1.2.0
+qdrant_client==1.16.2
+rank_bm25==0.2.2
+razdel==0.5.0
+Requests==2.32.5
+sentence_transformers==5.2.1
+torch==2.9.1
+transformers==5.0.0
