@@ -40,12 +40,16 @@ morph = MorphAnalyzer()
 REFUSE_VECTORIZER = None
 REFUSE_MODEL = None
 REFUSE_THRESHOLD = 0.5
+REFUSE_VECTORIZER = None
+REFUSE_MODEL = None
+REFUSE_THRESHOLD = 0.75
+
 def load_refuse_model(path):
     global REFUSE_VECTORIZER, REFUSE_MODEL, REFUSE_THRESHOLD
     artifact = joblib.load(path)
     REFUSE_VECTORIZER = artifact["vectorizer"]
     REFUSE_MODEL = artifact["model"]
-    REFUSE_THRESHOLD = artifact.get("threshold", 0.5)
+    REFUSE_THRESHOLD = max(float(artifact.get("threshold", 0.75)), 0.75)
 
 
 def normalize_query(query):

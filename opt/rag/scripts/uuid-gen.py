@@ -11,8 +11,8 @@ ACTION_RE = re.compile(r"^\s*expected_action:\s*(?P<body>.+?)\s*$")
 TARGET_REFUSE_RE = re.compile(r"^\s*target_refuse:\s*(?P<body>.+?)\s*$")
 
 BASE_DIR = Path(__file__).resolve().parents[1]
-IN_PATH = BASE_DIR / "data" / "sets" / "evaluation-set.txt"
-OUT_PATH = BASE_DIR / "data" / "sets" / "evaluation_golden_set.jsonl"
+IN_PATH = BASE_DIR / "data" / "sets" / "agent_set.txt"
+OUT_PATH = BASE_DIR / "data" / "sets" / "agent_set.jsonl"
 
 def dump_line(f, obj):
     f.write(json.dumps(obj, ensure_ascii=False) + "\n")

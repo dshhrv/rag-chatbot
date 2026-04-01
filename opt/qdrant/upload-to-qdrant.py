@@ -1,10 +1,12 @@
 import json
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct
+from pathlib import Path
 
 BATCH = 20
+BASE_DIR = Path(__file__).resolve().parents[1]
 URL = "http://localhost:6333"
-IN_PATH = "../opt/rag/data/popatkus_points_5_base.jsonl"
+IN_PATH = BASE_DIR / "rag" / "data" / "popatkus_points_5_base.jsonl"
 COLLECTION_NAME = "popatkus-base"
 VEC_LEN = 768
 

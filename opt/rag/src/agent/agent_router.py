@@ -13,10 +13,16 @@ sys.path.insert(0, str(ROOT))
 from src.retrieval.bm25 import load_index, INDEX_PATH
 from src.retrieval.retrieve import retrieve_top
 from src.retrieval.encoder import rerank_one, MODEL_RERANK, load_chunks_map
-from src.retrieval.crag import refuse, retrieve_again
+from src.retrieval.crag import refuse, retrieve_again, load_refuse_model
 from src.llm.client import generate_answer
 from src.llm.promts import PROMT_BASE, PROMT_COMPARISON
 from langgraph.graph import StateGraph, START, END
+
+
+REFUSE_MODEL_PATH = ROOT / "data" / "crag" / "action_eval" / "refuse-logreg.joblib"
+
+if REFUSE_MODEL_PATH.exists():
+    load_refuse_model(REFUSE_MODEL_PATH)
 
 
 morph = MorphAnalyzer()
@@ -223,17 +229,20 @@ def needs_clarification(query):
 
 
 def route_query(state):
-    if needs_clarification(state.query):
-        state.intent = "CLARIFY"
-        return state
     if is_email_request(state.query):
         state.intent = "EMAIL"
         return state
+
     if is_comparison(state.query):
         a, b = extract_comparison_entities(state.query)
-        state.intent = "COMPARISON"
-        state.entity_a = a
-        state.entity_b = b
+        if a is not None and b is not None:
+            state.intent = "COMPARISON"
+            state.entity_a = a
+            state.entity_b = b
+            return state
+
+    if needs_clarification(state.query):
+        state.intent = "CLARIFY"
         return state
 
     if refuse(state.query, state.lang):
@@ -306,6 +315,13 @@ def retry_search(state):
 
 
 def retrieve_comparison(state):
+    if not state.entity_a or not state.entity_b:
+        state.intent = "CLARIFY"
+        state.retrieval_ok = False
+        state.need_retry = False
+        state.escalation_reason = "comparison_entities_missing"
+        return state
+
     final_ids_a, defs_a = retrieve_top(
         query=state.entity_a,
         lang=state.lang,
@@ -317,7 +333,6 @@ def retrieve_comparison(state):
         top_final=state.top_final,
         only_english=False,
     )
-
     final_ids_b, defs_b = retrieve_top(
         query=state.entity_b,
         lang=state.lang,
@@ -329,7 +344,6 @@ def retrieve_comparison(state):
         top_final=state.top_final,
         only_english=False,
     )
-
     reranked_a = rerank_items(state.entity_a, final_ids_a)
     reranked_b = rerank_items(state.entity_b, final_ids_b)
 
