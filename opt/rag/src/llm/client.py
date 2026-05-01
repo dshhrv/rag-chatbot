@@ -19,12 +19,7 @@ RUNS_DIR = DATA_DIR / "llm" / "runs_llm"
 OUT_PATH_ALL = DATA_DIR / "popatkus_all_v5.jsonl"
 IN_PATH = DATA_DIR / "sets" / "refuse_50.jsonl"
 
-# MODEL = "qwen3:4b-instruct-2507-q4_K_M"
-MODEL = "gemma3:4b-it-q4_K_M"
-# MODEL = "phi4-mini:3.8b-q4_K_M"
-# MODEL = "qwen2.5:3b-instruct-q4_K_M"
-# MODEL = "qwen2.5:1.5b-instruct-q4_K_M"
-
+MODEL = "qwen2.5:1.5b-instruct-q4_K_M"
 MODEL_TAG = MODEL.replace("/", "_").replace(":", "_")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
 OUT_PATH = RUNS_DIR / f"llm_refuse_{MODEL_TAG}.jsonl"
@@ -68,6 +63,27 @@ def build_clauses_text(ctx_ids):
     return clauses_text.strip()
 
 
+def call_ollama(messages, temperature=0.0, num_ctx=1024, num_predict=256, timeout=600, format=None):
+    payload = {
+        "model": MODEL,
+        "messages": messages,
+        "stream": False,
+        "options": {
+            "temperature": temperature,
+            "num_ctx": num_ctx,
+            "num_predict": num_predict,
+        },
+        "keep_alive": "5m",
+    }
+    if format:
+        payload["format"] = format
+    
+    resp = requests.post(OLLAMA_URL, json=payload, timeout=timeout)
+    resp.raise_for_status()
+    data = resp.json()
+    return data["message"]["content"]
+
+
 def generate_answer(query, lang, ctx_ids=None, promt=PROMT_BASE, top_ctx=3):
     if ctx_ids is None:
         final_ids, _ = retrieve_top(
@@ -95,22 +111,7 @@ def generate_answer(query, lang, ctx_ids=None, promt=PROMT_BASE, top_ctx=3):
         {"role": "user", "content": user_content},
     ]
 
-    flush = {
-        "model": MODEL,
-        "messages": messages,
-        "stream": False,
-        "options": {
-            "temperature": 0.0,
-            "num_ctx": 1024,
-            "num_predict": 256,
-        },
-        "keep_alive": "5m",
-    }
-
-    resp = requests.post(OLLAMA_URL, json=flush, timeout=600)
-    resp.raise_for_status()
-    data = resp.json()
-    return data["message"]["content"]
+    return call_ollama(messages, temperature=0.0, num_ctx=1024, num_predict=256)
 
 
 if OUT_PATH_ALL.exists():
@@ -181,4 +182,4 @@ if __name__ == "__main__":
         args.runs = OUT_PATH
 
     promt = PROMT_COMPARISON if args.comparison else PROMT_BASE
-    initialize(in_path=args.golden, out_path=args.runs, promt=promt)
+   
