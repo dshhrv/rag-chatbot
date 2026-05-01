@@ -20,9 +20,7 @@ from src.llm.client import generate_answer
 from src.llm.sgr import generate_sgr
 from src.llm.promts import PROMT_BASE, PROMT_COMPARISON
 from langgraph.graph import StateGraph, START, END
-
-
-
+from src.llm.nli import verify_answer_simple as nli_verify
 
 from src.retrieval.crag import REFUSE_MODEL, REFUSE_VECTORIZER
 
@@ -251,6 +249,19 @@ def needs_clarification(query):
     return False
 
 
+def verify_answer_node(state):
+    lower_ans = (state.answer or "").lower()
+    if any(x in lower_ans for x in ["не найдено", "couldn't find", "не удалось"]):
+        return state
+    premise_parts = [c.get("text", "") for c in state.chunks[:2] if c.get("text")]
+    premise = " ".join(premise_parts)[:1000]
+    result = nli_verify(premise, state.answer)
+    state.is_hallucination = result["is_hallucination"]
+    if state.is_hallucination:
+        state.escalation_reason = f"nli_{result['label']}"
+    return state
+
+
 def route_query(state):
     if is_email_request(state.query):
         state.intent = "EMAIL"
@@ -291,9 +302,9 @@ def retrieve_search(state):
     )
 
     reranked = rerank_items(state.query, final_ids)
-    print(f"\n[DEBUG SEARCH] Найдено {len(reranked)} чанков. Топ-3:")
-    for i, c in enumerate(reranked[:3]):
-        print(f"  {i+1}. ID: {c['id']}, Score: {c.get('ce_score')}")
+    # print(f"\n[DEBUG SEARCH] Найдено {len(reranked)} чанков. Топ-3:")
+    # for i, c in enumerate(reranked[:3]):
+    #     print(f"  {i+1}. ID: {c['id']}, Score: {c.get('ce_score')}")
     state.chunks = reranked
     state.defs = defs
     state.need_retry = (not reranked) or retrieve_again(reranked, CONFIDENCE_STATS)
@@ -479,9 +490,8 @@ def escalation_node(state):
 def generate_search_answer(state):
     ctx_ids = [item["id"] for item in state.chunks[:3]]
     result = generate_sgr(state.query, state.lang, ctx_ids, top_ctx=3)
-    state.answer = result
+    state.answer = result.get("answer", "") if isinstance(result, dict) else result
     return state
-
 
 def generate_comparison_answer(state):
     ctx_ids = []
@@ -490,7 +500,7 @@ def generate_comparison_answer(state):
         if cid not in ctx_ids:
             ctx_ids.append(cid)
     result = generate_sgr(state.query, state.lang, ctx_ids, top_ctx=4)
-    state.answer = result
+    state.answer = result.get("answer", "") if isinstance(result, dict) else result
     return state
 
 
@@ -528,6 +538,10 @@ def judge_comparison_edge(state):
     return "escalate"
 
 
+def verify_router(state):
+    return "escalate" if state.is_hallucination else "end"
+
+
 agent_rag = StateGraph(AgentState)
 agent_rag.add_node("route_intent", route_query)
 agent_rag.add_node("retrieve_search", retrieve_search)
@@ -540,6 +554,7 @@ agent_rag.add_node("generate_search_answer", generate_search_answer)
 agent_rag.add_node("generate_comparison_answer", generate_comparison_answer)
 agent_rag.add_node("draft_email", draft_email)
 agent_rag.add_node("clarify", clarify_node)
+agent_rag.add_node("verify_answer", verify_answer_node)
 agent_rag.add_node("refuse", refuse_node)
 agent_rag.add_node("escalate", escalation_node)
 
@@ -547,6 +562,8 @@ agent_rag.add_edge(START, "route_intent")
 agent_rag.add_conditional_edges("route_intent", route_intent_edge)
 agent_rag.add_edge("retrieve_search", "judge_search")
 agent_rag.add_conditional_edges("judge_search", judge_search_edge)
+agent_rag.add_edge("generate_search_answer", "verify_answer")
+agent_rag.add_edge("generate_comparison_answer", "verify_answer")
 agent_rag.add_edge("retry_search", "judge_search")
 agent_rag.add_edge("retrieve_comparison", "judge_comparison")
 agent_rag.add_conditional_edges("judge_comparison", judge_comparison_edge)
@@ -554,8 +571,7 @@ agent_rag.add_edge("retry_comparison", "judge_comparison")
 agent_rag.add_edge("draft_email", END)
 agent_rag.add_edge("clarify", END)
 agent_rag.add_edge("refuse", END)
-agent_rag.add_edge("generate_search_answer", END)
-agent_rag.add_edge("generate_comparison_answer", END)
+agent_rag.add_conditional_edges("verify_answer", verify_router, {"escalate": "escalate", "end": END})
 agent_rag.add_edge("escalate", END)
 
 graph = agent_rag.compile()
