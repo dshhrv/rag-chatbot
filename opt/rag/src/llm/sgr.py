@@ -48,8 +48,6 @@ def generate_sgr(query, lang, ctx_ids, top_ctx=5):
         format="json",
         timeout=600,
     )
-    
-    print("\n[DEBUG LLM RAW OUTPUT]:", raw)
 
     result = parse_json_from_llm(raw)
     if not result or not isinstance(result, dict):
