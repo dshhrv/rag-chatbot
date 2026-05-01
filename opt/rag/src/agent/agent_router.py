@@ -9,14 +9,24 @@ from sentence_transformers import CrossEncoder
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+import time
 
 from src.retrieval.bm25 import load_index, INDEX_PATH
 from src.retrieval.retrieve import retrieve_top
 from src.retrieval.encoder import rerank_one, MODEL_RERANK, load_chunks_map
 from src.retrieval.crag import refuse, retrieve_again, load_refuse_model
 from src.llm.client import generate_answer
+from src.llm.sgr import generate_sgr
 from src.llm.promts import PROMT_BASE, PROMT_COMPARISON
 from langgraph.graph import StateGraph, START, END
+
+
+
+
+from src.retrieval.crag import REFUSE_MODEL, REFUSE_VECTORIZER
+
+print("REFUSE_MODEL:", "OK" if REFUSE_MODEL else "NOT LOADED")
+print("VECTORIZER:", "OK" if REFUSE_VECTORIZER else "NOT LOADED")
 
 
 REFUSE_MODEL_PATH = ROOT / "data" / "crag" / "action_eval" / "refuse-logreg.joblib"
@@ -39,7 +49,7 @@ _chunks_map = None
 _reranker = None
 
 COMPARISON_REGEX_PATTERNS = [
-    r"чем\s+(.+?)\s+отличается\s+от\s+(.+)",
+    r"чем\s+отличается\s+(.+?)\s+от\s+(.+)",
     r"в\s+чем\s+разница\s+между\s+(.+?)\s+и\s+(.+)",
     r"разница\s+между\s+(.+?)\s+и\s+(.+)",
     r"сравни\s+(.+?)\s+и\s+(.+)",
@@ -51,38 +61,16 @@ COMPARISON_REGEX_PATTERNS = [
 ]
 
 COMPARISON_MARKERS = [
-    "чем отличается",
-    "в чем разница",
-    "разница между",
-    "сравни",
-    "сравнить",
-    "what is the difference between",
-    "difference between",
-    "how does",
-    "differ from",
-    "compare",
-]
+    "чем отличается", "в чем разница", "разница между", "сравни", "сравнить", "what is the difference between", "difference between", "how does", "differ from", "compare"
+    ]
 
 EMAIL_PATTERNS = [
-    "напиши письмо",
-    "составь письмо",
-    "черновик письма",
-    "draft email",
-    "write email",
-    "email to",
+    "напиши письмо", "составь письмо", "черновик письма", "draft email", "write email", "email to",
 ]
 
 VAGUE_PATTERNS = [
-    "что делать",
-    "а дальше",
-    "а потом",
-    "это обязательно",
-    "не успею",
-    "что будет",
-    "кому писать",
-    "куда писать",
-    "где это",
-    "как это",
+    "что делать", "а дальше", "а потом", "это обязательно", "не успею", "что будет",
+    "кому писать", "куда писать", "где это", "как это",
 ]
 
 VAGUE_WORDS = {
@@ -177,6 +165,8 @@ def extract_comparison_entities(query):
         if m:
             a = m.group(1).strip()
             b = m.group(2).strip()
+            a = re.sub(r"[?!.…,;:]+$", "", a).strip()
+            b = re.sub(r"[?!.…,;:]+$", "", b).strip()
             return a, b
     return None, None
 
@@ -184,6 +174,15 @@ def extract_comparison_entities(query):
 def is_meaningful_part(text):
     if not text:
         return False
+    DOMAIN_ENTITIES = {
+        "иуп", "иупа", "индивидуальный", "учебный", "план",
+        "академ", "академический", "отпуск",
+        "пересдача", "долг", "задолженность",
+        "справка", "комиссия", "отчисление",
+    }
+    q = text.lower().replace("ё", "е")
+    if any(entity in q for entity in DOMAIN_ENTITIES):
+        return True
     lemmas = normalize_query(text)
     if not lemmas:
         return False
@@ -241,12 +240,12 @@ def route_query(state):
             state.entity_b = b
             return state
 
-    if needs_clarification(state.query):
-        state.intent = "CLARIFY"
-        return state
-
     if refuse(state.query, state.lang):
         state.intent = "REFUSE"
+        return state
+    
+    if needs_clarification(state.query):
+        state.intent = "CLARIFY"
         return state
 
     state.intent = "SEARCH"
@@ -277,12 +276,10 @@ def retrieve_search(state):
 def judge_search(state):
     if state.retrieval_ok:
         return state
-
     if state.need_retry and state.retry_count == 0:
         state.retry_count += 1
         state.top_final = 20
         return state
-
     state.intent = "ESCALATION"
     state.escalation_reason = "search_retrieval_failed"
     return state
@@ -323,37 +320,44 @@ def retrieve_comparison(state):
         return state
 
     final_ids_a, defs_a = retrieve_top(
-        query=state.entity_a,
-        lang=state.lang,
-        bm25=bm25,
-        ids=ids,
-        meta=meta,
-        top_dense=80,
-        top_bm25=10,
-        top_final=state.top_final,
-        only_english=False,
+        query=state.entity_a, lang=state.lang, bm25=bm25, ids=ids, meta=meta,
+        top_dense=80, top_bm25=10, top_final=state.top_final, only_english=False,
     )
     final_ids_b, defs_b = retrieve_top(
-        query=state.entity_b,
-        lang=state.lang,
-        bm25=bm25,
-        ids=ids,
-        meta=meta,
-        top_dense=80,
-        top_bm25=10,
-        top_final=state.top_final,
-        only_english=False,
+        query=state.entity_b, lang=state.lang, bm25=bm25, ids=ids, meta=meta,
+        top_dense=80, top_bm25=10, top_final=state.top_final, only_english=False,
     )
+    
     reranked_a = rerank_items(state.entity_a, final_ids_a)
     reranked_b = rerank_items(state.entity_b, final_ids_b)
-
+    
+    print(f"\n[DEBUG] Comparison retrieval for: '{state.query}'")
+    print(f"  entity_a: '{state.entity_a}'")
+    for i, c in enumerate(reranked_a[:3], 1):
+        cid = c["id"]
+        chunk = get_chunks_map().get(cid)
+        txt = chunk.get("text", "")[:200].replace("\n", " ") if isinstance(chunk, dict) else str(chunk)[:200]
+        score = c.get("ce_score", "N/A")
+        print(f"    [{i}] {cid} (score={score}): {txt}...")
+    
+    print(f"  entity_b: '{state.entity_b}'")
+    for i, c in enumerate(reranked_b[:3], 1):
+        cid = c["id"]
+        chunk = get_chunks_map().get(cid)
+        txt = chunk.get("text", "")[:200].replace("\n", " ") if isinstance(chunk, dict) else str(chunk)[:200]
+        score = c.get("ce_score", "N/A")
+        print(f"    [{i}] {cid} (score={score}): {txt}...")
+    
+    need_retry_a = (not reranked_a) or retrieve_again(reranked_a, CONFIDENCE_STATS)
+    need_retry_b = (not reranked_b) or retrieve_again(reranked_b, CONFIDENCE_STATS)
+    
+    print(f"  retrieve_again(a)={retrieve_again(reranked_a, CONFIDENCE_STATS)}, need_retry_a={need_retry_a}")
+    print(f"  retrieve_again(b)={retrieve_again(reranked_b, CONFIDENCE_STATS)}, need_retry_b={need_retry_b}")
+    print(f"  → retrieval_ok={not (need_retry_a or need_retry_b)}")
+    
     state.chunks_a = reranked_a
     state.chunks_b = reranked_b
     state.defs = [defs_a, defs_b]
-
-    need_retry_a = (not reranked_a) or retrieve_again(reranked_a, CONFIDENCE_STATS)
-    need_retry_b = (not reranked_b) or retrieve_again(reranked_b, CONFIDENCE_STATS)
-
     state.need_retry = need_retry_a or need_retry_b
     state.retrieval_ok = not state.need_retry
     return state
@@ -408,12 +412,10 @@ def draft_email(state):
 def judge_comparison(state):
     if state.retrieval_ok:
         return state
-
     if state.need_retry and state.retry_count == 0:
         state.retry_count += 1
         state.top_final = 20
         return state
-
     state.intent = "ESCALATION"
     state.escalation_reason = "comparison_retrieval_failed"
     return state
@@ -436,35 +438,19 @@ def escalation_node(state):
 
 def generate_search_answer(state):
     ctx_ids = [item["id"] for item in state.chunks[:3]]
-    try:
-        state.answer = generate_answer(
-            query=state.query,
-            lang=state.lang,
-            ctx_ids=ctx_ids,
-            promt=PROMT_BASE,
-            top_ctx=3,
-        )
-    except Exception as exc:
-        state.answer = f"LLM недоступна: {exc}"
+    result = generate_sgr(state.query, state.lang, ctx_ids, top_ctx=3)
+    state.answer = result
     return state
 
 
 def generate_comparison_answer(state):
     ctx_ids = []
     for item in state.chunks_a[:2] + state.chunks_b[:2]:
-        chunk_id = item["id"]
-        if chunk_id not in ctx_ids:
-            ctx_ids.append(chunk_id)
-    try:
-        state.answer = generate_answer(
-            query=state.query,
-            lang=state.lang,
-            ctx_ids=ctx_ids,
-            promt=PROMT_COMPARISON,
-            top_ctx=4,
-        )
-    except Exception as exc:
-        state.answer = f"LLM недоступна: {exc}"
+        cid = item["id"]
+        if cid not in ctx_ids:
+            ctx_ids.append(cid)
+    result = generate_sgr(state.query, state.lang, ctx_ids, top_ctx=4)
+    state.answer = result
     return state
 
 
@@ -486,7 +472,7 @@ def judge_search_edge(state):
     if state_value(state, "retrieval_ok", False):
         return "generate_search_answer"
 
-    if state_value(state, "need_retry", False) and state_value(state, "retry_count", 0) == 1:
+    if state_value(state, "need_retry", False) and state_value(state, "retry_count", 0) == 0:
         return "retry_search"
 
     return "escalate"
@@ -497,7 +483,7 @@ def judge_comparison_edge(state):
     if state_value(state, "retrieval_ok", False):
         return "generate_comparison_answer"
 
-    if state_value(state, "need_retry", False) and state_value(state, "retry_count", 0) == 1:
+    if state_value(state, "need_retry", False) and state_value(state, "retry_count", 0) == 0:
         return "retry_comparison"
     return "escalate"
 
@@ -534,7 +520,13 @@ agent_rag.add_edge("escalate", END)
 
 graph = agent_rag.compile()
 
-
 def run_agent(query, lang="ru"):
     state = AgentState(query=query, lang=lang)
-    return graph.invoke(state)
+    return graph.invoke(state, config={"recursion_limit": 50})
+
+
+def run_agent_timed(query, lang="ru"):
+    t0 = time.perf_counter()
+    state = run_agent(query, lang)
+    t1 = time.perf_counter()
+    return state, round(t1 - t0, 3)
