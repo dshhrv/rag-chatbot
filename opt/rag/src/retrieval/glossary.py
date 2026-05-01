@@ -1,8 +1,13 @@
 import json
 import re
+import sys
+from pathlib import Path
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
 
 
-IN_PATH = "/opt/rag/data/popatkus_all_v5.jsonl"
+DATA_DIR = ROOT / "data"
+IN_PATH = DATA_DIR / "popatkus_all_v5.jsonl"
 WORD_RE = re.compile(r"[0-9A-Za-zА-Яа-яЁё]+", re.UNICODE)
 
 terms_ru = {}
@@ -26,9 +31,7 @@ def make_dict(in_path=IN_PATH):
 
 def detect_terms(text, lang):
     d = terms_ru if lang == "ru" else terms_en
-    if text:
-        text_norm = text.lower().strip()
-    text_norm = text
+    text_norm = text.lower().strip() if text else ""
     found = set()
     for t in d.keys():
         if " " in t:

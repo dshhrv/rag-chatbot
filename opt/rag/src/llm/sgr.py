@@ -5,7 +5,9 @@ sys.path.insert(0, str(ROOT))
 import json
 import re
 from src.llm.client import build_clauses_text, call_ollama
-from src.llm.glossary_utils import detect_glossary_terms, format_glossary_footer
+from src.retrieval.glossary import make_dict, detect_terms, format_definitions
+
+make_dict()
 
 def parse_json_from_llm(text):
     if not text:
@@ -20,15 +22,20 @@ def parse_json_from_llm(text):
     except json.JSONDecodeError:
         return None
 
-
 def generate_sgr(query, lang, ctx_ids, top_ctx=5):
     selected = ctx_ids[:top_ctx]
     clauses_text = build_clauses_text(selected)
+    defs = format_definitions(detect_terms(query, lang), lang)
+    if defs:
+        clauses_text = "ИНФОРМАЦИЯ ИЗ ГЛОССАРИЯ (ОПРЕДЕЛЕНИЯ):\n" + "\n".join(defs) + "\n\nТЕКСТЫ ДОКУМЕНТОВ:\n" + clauses_text
+
     if not clauses_text.strip():
-        return {"answer": "", "citations": [], "found": False}
+        return {"answer": "", "citations": [], "found": False, "defs": []}
+        
     from src.llm.promts import PROMPT_SGR_JSON
     system_prompt = PROMPT_SGR_JSON.format(lang=lang)
     user_content = f"QUESTION:\n{query}\n\nCONTEXT:\n{clauses_text}"
+    
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_content},
@@ -41,17 +48,23 @@ def generate_sgr(query, lang, ctx_ids, top_ctx=5):
         format="json",
         timeout=600,
     )
+    
+    print("\n[DEBUG LLM RAW OUTPUT]:", raw)
+
     result = parse_json_from_llm(raw)
     if not result or not isinstance(result, dict):
-        return {"answer": "", "citations": [], "found": False}
+        return {"answer": "", "citations": [], "found": False, "defs": defs}
+        
     answer = str(result.get("answer", "")).strip()
-    citations = [cid for cid in result.get("citations", []) if cid in selected]
+    citations = [str(cid) for cid in result.get("citations", [])]
     found = bool(result.get("found", False))
+    
     if found and not citations and not answer.lower().startswith("не найдено"):
-        found = False
-        answer = "В предоставленных документах нет точной информации для ответа."
+        pass
+    
     return {
         "answer": answer,
         "citations": citations,
         "found": found,
+        "defs": defs,
     }

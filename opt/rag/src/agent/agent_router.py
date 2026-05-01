@@ -6,6 +6,7 @@ from typing import Optional, List, Dict, Any, Literal
 
 from pymorphy3 import MorphAnalyzer
 from sentence_transformers import CrossEncoder
+from transformers import pipeline
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -47,6 +48,12 @@ CONFIDENCE_STATS = {
 
 _chunks_map = None
 _reranker = None
+
+
+def detect_lang(text: str) -> str:
+    ru_chars = len(re.findall(r'[а-яА-ЯёЁ]', text))
+    en_chars = len(re.findall(r'[a-zA-Z]', text))
+    return "en" if en_chars > ru_chars else "ru"
 
 COMPARISON_REGEX_PATTERNS = [
     r"чем\s+отличается\s+(.+?)\s+от\s+(.+)",
@@ -95,6 +102,7 @@ class AgentState():
     entity_b: Optional[str] = None
     retry_count: int = 0
     top_final: int = 10
+    is_hallucination: bool = False
     chunks: List[Dict[str, Any]] = field(default_factory=list)
     chunks_a: List[Dict[str, Any]] = field(default_factory=list)
     chunks_b: List[Dict[str, Any]] = field(default_factory=list)
@@ -190,6 +198,22 @@ def is_meaningful_part(text):
     return len(content) > 0
 
 
+def is_definition_query(query):
+    q = query.lower().replace("ё", "е")
+    return bool(re.search(r"что такое|определение|значени[ея]|это кто|это что|кто такой|как называется|what is|define|definition of", q))
+
+def expand_definition_query(query, lang):
+    if not is_definition_query(query):
+        return query
+    m = re.search(r"(?:что такое|определение|значени[ея]|это кто|это что|кто такой|как называется|what is|define|definition of)\s+(.+?)[?.!]?$", query.lower().replace("ё", "е"))
+    if m:
+        term = m.group(1).strip()
+        if lang == "en":
+            return f"{query} glossary term definition {term}"
+        return f"{query} глоссарий термин определение {term}"
+    return query
+
+
 def is_comparison(query):
     a, b = extract_comparison_entities(query)
     if a is not None and b is not None:
@@ -253,8 +277,9 @@ def route_query(state):
 
 
 def retrieve_search(state):
+    search_query = expand_definition_query(state.query, state.lang)
     final_ids, defs = retrieve_top(
-        query=state.query,
+        query=search_query,
         lang=state.lang,
         bm25=bm25,
         ids=ids,
@@ -266,6 +291,9 @@ def retrieve_search(state):
     )
 
     reranked = rerank_items(state.query, final_ids)
+    print(f"\n[DEBUG SEARCH] Найдено {len(reranked)} чанков. Топ-3:")
+    for i, c in enumerate(reranked[:3]):
+        print(f"  {i+1}. ID: {c['id']}, Score: {c.get('ce_score')}")
     state.chunks = reranked
     state.defs = defs
     state.need_retry = (not reranked) or retrieve_again(reranked, CONFIDENCE_STATS)
@@ -405,7 +433,10 @@ def retry_comparison(state):
 
 
 def draft_email(state):
-    state.answer = "Черновик письма готов. Добавь адресата, тему и свои данные перед отправкой."
+    if state.lang == "en":
+        state.answer = "The email draft is ready. Please add the recipient, subject, and your details before sending."
+    else:
+        state.answer = "Черновик письма готов. Добавь адресата, тему и свои данные перед отправкой."
     return state
 
 
@@ -422,17 +453,26 @@ def judge_comparison(state):
 
 
 def clarify_node(state):
-    state.answer = "Уточни, пожалуйста, что именно ты имеешь в виду. Например: пересдачи, академический отпуск, ИУП или справка."
+    if state.lang == "en":
+        state.answer = "Please clarify what exactly you mean. For example: retakes, academic leave, or certificates."
+    else:
+        state.answer = "Уточни, пожалуйста, что именно ты имеешь в виду. Например: пересдачи, академический отпуск, ИУП или справка."
     return state
-
 
 def refuse_node(state):
-    state.answer = "Я не могу помочь с таким запросом. Лучше переформулируй вопрос в рамках правил и регламентов Попаткуса."
+    if state.lang == "en":
+        state.answer = "I cannot help with this request. Please rephrase your question according to Popatkus rules."
+    else:
+        state.answer = "Я не могу помочь с таким запросом. Лучше переформулируй вопрос в рамках правил и регламентов Попаткуса."
     return state
+
 
 
 def escalation_node(state):
-    state.answer = "Не удалось надежно найти ответ. Лучше передать вопрос оператору."
+    if state.lang == "en":
+        state.answer = "I couldn't find a reliable answer. Let me transfer you to a human operator."
+    else:
+        state.answer = "Не удалось надежно найти ответ. Лучше передать вопрос оператору."
     return state
 
 
@@ -520,13 +560,13 @@ agent_rag.add_edge("escalate", END)
 
 graph = agent_rag.compile()
 
-def run_agent(query, lang="ru"):
-    state = AgentState(query=query, lang=lang)
+def run_agent(query):
+    detected_lang = detect_lang(query)
+    state = AgentState(query=query, lang=detected_lang)
     return graph.invoke(state, config={"recursion_limit": 50})
 
-
-def run_agent_timed(query, lang="ru"):
+def run_agent_timed(query):
     t0 = time.perf_counter()
-    state = run_agent(query, lang)
+    state = run_agent(query)
     t1 = time.perf_counter()
     return state, round(t1 - t0, 3)
