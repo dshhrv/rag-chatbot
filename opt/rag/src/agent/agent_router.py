@@ -27,8 +27,7 @@ from src.retrieval.crag import REFUSE_MODEL, REFUSE_VECTORIZER
 print("REFUSE_MODEL:", "OK" if REFUSE_MODEL else "NOT LOADED")
 print("VECTORIZER:", "OK" if REFUSE_VECTORIZER else "NOT LOADED")
 
-
-REFUSE_MODEL_PATH = ROOT / "data" / "crag" / "action_eval" / "refuse-logreg.joblib"
+REFUSE_MODEL_PATH = ROOT / "data" / "crag" / "action_eval" / "refuse-logreg.joblib`
 
 if REFUSE_MODEL_PATH.exists():
     load_refuse_model(REFUSE_MODEL_PATH)
@@ -100,6 +99,7 @@ class AgentState():
     entity_b: Optional[str] = None
     retry_count: int = 0
     top_final: int = 10
+    sgr_result: Optional[Dict[str, Any]] = None 
     is_hallucination: bool = False
     chunks: List[Dict[str, Any]] = field(default_factory=list)
     chunks_a: List[Dict[str, Any]] = field(default_factory=list)
@@ -370,23 +370,6 @@ def retrieve_comparison(state):
     reranked_a = rerank_items(state.entity_a, final_ids_a)
     reranked_b = rerank_items(state.entity_b, final_ids_b)
     
-    print(f"\n[DEBUG] Comparison retrieval for: '{state.query}'")
-    print(f"  entity_a: '{state.entity_a}'")
-    for i, c in enumerate(reranked_a[:3], 1):
-        cid = c["id"]
-        chunk = get_chunks_map().get(cid)
-        txt = chunk.get("text", "")[:200].replace("\n", " ") if isinstance(chunk, dict) else str(chunk)[:200]
-        score = c.get("ce_score", "N/A")
-        print(f"    [{i}] {cid} (score={score}): {txt}...")
-    
-    print(f"  entity_b: '{state.entity_b}'")
-    for i, c in enumerate(reranked_b[:3], 1):
-        cid = c["id"]
-        chunk = get_chunks_map().get(cid)
-        txt = chunk.get("text", "")[:200].replace("\n", " ") if isinstance(chunk, dict) else str(chunk)[:200]
-        score = c.get("ce_score", "N/A")
-        print(f"    [{i}] {cid} (score={score}): {txt}...")
-    
     need_retry_a = (not reranked_a) or retrieve_again(reranked_a, CONFIDENCE_STATS)
     need_retry_b = (not reranked_b) or retrieve_again(reranked_b, CONFIDENCE_STATS)
     
@@ -490,7 +473,8 @@ def escalation_node(state):
 def generate_search_answer(state):
     ctx_ids = [item["id"] for item in state.chunks[:3]]
     result = generate_sgr(state.query, state.lang, ctx_ids, top_ctx=3)
-    state.answer = result.get("answer", "") if isinstance(result, dict) else result
+    state.sgr_result = result
+    state.answer = result.get("answer", "")
     return state
 
 def generate_comparison_answer(state):
@@ -500,7 +484,8 @@ def generate_comparison_answer(state):
         if cid not in ctx_ids:
             ctx_ids.append(cid)
     result = generate_sgr(state.query, state.lang, ctx_ids, top_ctx=4)
-    state.answer = result.get("answer", "") if isinstance(result, dict) else result
+    state.sgr_result = result
+    state.answer = result.get("answer", "")
     return state
 
 
