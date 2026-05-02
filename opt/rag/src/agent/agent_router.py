@@ -27,7 +27,7 @@ from src.retrieval.crag import REFUSE_MODEL, REFUSE_VECTORIZER
 print("REFUSE_MODEL:", "OK" if REFUSE_MODEL else "NOT LOADED")
 print("VECTORIZER:", "OK" if REFUSE_VECTORIZER else "NOT LOADED")
 
-REFUSE_MODEL_PATH = ROOT / "data" / "crag" / "action_eval" / "refuse-logreg.joblib`
+REFUSE_MODEL_PATH = ROOT / "data" / "crag" / "action_eval" / "refuse-logreg.joblib"
 
 if REFUSE_MODEL_PATH.exists():
     load_refuse_model(REFUSE_MODEL_PATH)
@@ -302,9 +302,6 @@ def retrieve_search(state):
     )
 
     reranked = rerank_items(state.query, final_ids)
-    # print(f"\n[DEBUG SEARCH] Найдено {len(reranked)} чанков. Топ-3:")
-    # for i, c in enumerate(reranked[:3]):
-    #     print(f"  {i+1}. ID: {c['id']}, Score: {c.get('ce_score')}")
     state.chunks = reranked
     state.defs = defs
     state.need_retry = (not reranked) or retrieve_again(reranked, CONFIDENCE_STATS)
@@ -372,10 +369,6 @@ def retrieve_comparison(state):
     
     need_retry_a = (not reranked_a) or retrieve_again(reranked_a, CONFIDENCE_STATS)
     need_retry_b = (not reranked_b) or retrieve_again(reranked_b, CONFIDENCE_STATS)
-    
-    print(f"  retrieve_again(a)={retrieve_again(reranked_a, CONFIDENCE_STATS)}, need_retry_a={need_retry_a}")
-    print(f"  retrieve_again(b)={retrieve_again(reranked_b, CONFIDENCE_STATS)}, need_retry_b={need_retry_b}")
-    print(f"  → retrieval_ok={not (need_retry_a or need_retry_b)}")
     
     state.chunks_a = reranked_a
     state.chunks_b = reranked_b

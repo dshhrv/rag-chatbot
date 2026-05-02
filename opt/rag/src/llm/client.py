@@ -19,7 +19,7 @@ RUNS_DIR = DATA_DIR / "llm" / "runs_llm"
 OUT_PATH_ALL = DATA_DIR / "popatkus_all_v5.jsonl"
 IN_PATH = DATA_DIR / "sets" / "refuse_50.jsonl"
 
-MODEL = "qwen2.5:1.5b-instruct-q4_K_M"
+MODEL = "gemma3:4b-it-q4_K_M"
 MODEL_TAG = MODEL.replace("/", "_").replace(":", "_")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
 OUT_PATH = RUNS_DIR / f"llm_refuse_{MODEL_TAG}.jsonl"
