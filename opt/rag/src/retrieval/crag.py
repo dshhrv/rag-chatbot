@@ -237,11 +237,11 @@ def dump_line(f, obj):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--calibration", default="/home/dshhrv666/server1/popatkus-rag-bot/opt/rag/data/sets/all_golden_set.jsonl")
-    p.add_argument("--evaluation", default="/home/dshhrv666/server1/popatkus-rag-bot/opt/rag/data/sets/evaluation_golden_set.jsonl")
-    p.add_argument("--stats_json", default="/home/dshhrv666/server1/popatkus-rag-bot/opt/rag/data/sets/crag/confidence_stats.json")
+    p.add_argument("--calibration", default=str(ROOT / "data/sets/all_golden_set.jsonl"))
+    p.add_argument("--evaluation", default=str(ROOT / "data/sets/evaluation_golden_set.jsonl"))
+    p.add_argument("--stats_json", default=str(ROOT / "data/crag/confidence_stats.json"))
     
-    # p.add_argument("--refuse_model", default="/home/dshhrv666/server1/popatkus-rag-bot/opt/rag/data/crag/action_eval/refuse-logreg.joblib")
+    p.add_argument("--refuse_model", default=str(ROOT / "data/crag/action_eval/refuse-logreg.joblib"))
     p.add_argument("--refuse_model", default=None)
     p.add_argument("--top_dense_retry", type=int, default=100)
     p.add_argument("--top_bm25_retry", type=int, default=20)

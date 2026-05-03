@@ -248,11 +248,10 @@ def needs_clarification(query):
 
     return False
 
-
 def verify_answer_node(state):
     lower_ans = (state.answer or "").lower()
-    if any(x in lower_ans for x in ["не найдено", "couldn't find", "не удалось"]):
-        return state
+    if any(x in lower_ans for x in ["No direct confirmation.", "В предоставленных документах нет информации для ответа."]):
+        return state  
     premise_parts = [c.get("text", "") for c in state.chunks[:2] if c.get("text")]
     premise = " ".join(premise_parts)[:1000]
     result = nli_verify(premise, state.answer)
@@ -260,7 +259,6 @@ def verify_answer_node(state):
     if state.is_hallucination:
         state.escalation_reason = f"nli_{result['label']}"
     return state
-
 
 def route_query(state):
     if is_email_request(state.query):
@@ -467,7 +465,12 @@ def generate_search_answer(state):
     ctx_ids = [item["id"] for item in state.chunks[:3]]
     result = generate_sgr(state.query, state.lang, ctx_ids, top_ctx=3)
     state.sgr_result = result
-    state.answer = result.get("answer", "")
+    final_answer = result.get("answer", "")
+    citations = result.get("citations", [])
+    if citations:
+        final_answer += " " + " ".join([f"[{c}]" for c in citations])
+    
+    state.answer = final_answer
     return state
 
 def generate_comparison_answer(state):
@@ -478,7 +481,11 @@ def generate_comparison_answer(state):
             ctx_ids.append(cid)
     result = generate_sgr(state.query, state.lang, ctx_ids, top_ctx=4)
     state.sgr_result = result
-    state.answer = result.get("answer", "")
+    final_answer = result.get("answer", "")
+    citations = result.get("citations", [])
+    if citations:
+        final_answer += " " + " ".join([f"[{c}]" for c in citations])
+    state.answer = final_answer
     return state
 
 
