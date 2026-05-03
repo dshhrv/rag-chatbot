@@ -39,7 +39,12 @@ def generate_sgr(query, lang, ctx_ids, top_ctx=5):
         clauses_text = "ИНФОРМАЦИЯ ИЗ ГЛОССАРИЯ (ОПРЕДЕЛЕНИЯ):\n" + "\n".join(glossary_blocks) + "\n\nТЕКСТЫ ДОКУМЕНТОВ:\n" + clauses_text
 
     if not clauses_text.strip():
-        return {"answer": "", "citations": [], "found": False, "defs": []}
+            return {
+                "answer": "В предоставленных документах нет информации для ответа.", 
+                "citations": [], 
+                "found": False, 
+                "defs": []
+            }
         
     from src.llm.promts import PROMPT_SGR_JSON
     system_prompt = PROMPT_SGR_JSON.format(lang=lang)
@@ -85,9 +90,18 @@ def process_dataset_and_evaluate(input_path, output_path, out_csv, chunks_path):
                 continue
                 
             obj = json.loads(line)
-            question = obj.get("text", "")
+            question = obj.get("text") or obj.get("q") or obj.get("question") or ""
             lang = obj.get("lang", "ru")
-            ctx_ids = obj.get("rel", [])
+            
+            rel_raw = obj.get("rel", [])
+            ctx_ids = [rel_raw] if isinstance(rel_raw, str) else rel_raw
+            expected = obj.get("expected_action")
+            if expected == "REFUSE":
+                target_refuse = 1
+            elif expected is not None:
+                target_refuse = 0
+            else:
+                target_refuse = None
             
             start = time.time()
             sgr_res = generate_sgr(question, lang, ctx_ids)
@@ -103,7 +117,7 @@ def process_dataset_and_evaluate(input_path, output_path, out_csv, chunks_path):
                 "answer": final_answer,
                 "ctx_ids": ctx_ids,
                 "rel": obj.get("rel", []),
-                "target_refuse": obj.get("target_refuse"),
+                "target_refuse": target_refuse,
                 "latency_s": latency,
                 "found": sgr_res.get("found", False)
             }
@@ -115,16 +129,21 @@ def process_dataset_and_evaluate(input_path, output_path, out_csv, chunks_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", default=str(ROOT / "data/sets/golden_50.jsonl"))
+    parser.add_argument("--input", default=str(ROOT / "data/sets/sgr_50_set.jsonl"))
     parser.add_argument("--output", default=str(ROOT / "data/llm/runs_llm/runs_sgr.jsonl"))
     parser.add_argument("--out-csv", default=str(ROOT / "data/llm/csv/metrics_sgr.csv"))
     parser.add_argument("--chunks", default=str(ROOT / "data/popatkus_all_v5.jsonl"))
+    parser.add_argument("--metrics-only", action="store_true", help="Пропустить генерацию и только посчитать метрики")
     
     args = parser.parse_args()
 
-    process_dataset_and_evaluate(
-        input_path=args.input,
-        output_path=args.output,
-        out_csv=args.out_csv,
-        chunks_path=args.chunks
-    )
+    if args.metrics_only:
+        evaluate(runs_path=args.output, out_csv=args.out_csv, chunks_path=args.chunks)
+        print(f"Метрики обновлены и сохранены в: {args.out_csv}")
+    else:
+        process_dataset_and_evaluate(
+            input_path=args.input,
+            output_path=args.output,
+            out_csv=args.out_csv,
+            chunks_path=args.chunks
+        )

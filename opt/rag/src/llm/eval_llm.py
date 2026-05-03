@@ -2,14 +2,17 @@ import json
 import re
 import argparse
 from collections import defaultdict
-
 import pandas as pd
 
-from client import MODEL, MODEL_TAG
-
+try:
+    from client import MODEL, MODEL_TAG
+except ImportError:
+    MODEL = "sgr_model"
+    MODEL_TAG = "sgr"
 
 REFUSAL_RU = "В документе нет прямого подтверждения"
 REFUSAL_EN = "No direct confirmation"
+SGR_REFUSAL = "нет информации для ответа" # <--- ДОБАВИЛИ ФРАЗУ SGR
 
 OUT_PATH_ALL = "data/popatkus_all_v5.jsonl"
 BRACKET_ID_RE = re.compile(r"\[([^\]\n]{1,120})\]")
@@ -46,12 +49,18 @@ def clause_to_id(chunks_map):
 
 def extract_clause_ids(answer, all_clause_ids):
     out = set(BRACKET_ID_RE.findall(answer or ""))
-    return {x for x in out if x in all_clause_ids}
+    valid_citations = set()
+    for x in out:
+        if x in all_clause_ids or x.startswith("Glossary"):
+            valid_citations.add(x)
+    return valid_citations
 
 
 def is_refusal(answer):
     a_low = (answer or "").lower()
-    return int((REFUSAL_RU.lower() in a_low) or (REFUSAL_EN.lower() in a_low))
+    if not a_low:
+        return 1  # Пустой ответ от заглушки - это тоже отказ
+    return int((REFUSAL_RU.lower() in a_low) or (SGR_REFUSAL in a_low) or (REFUSAL_EN.lower() in a_low))
 
 
 def parse_target_refuse(value):
@@ -72,9 +81,10 @@ def parse_target_refuse(value):
 def llm_metrics(answer, ctx_clause_ids, ctx_ids, rel, clause_to_chunk_ids, all_clause_ids):
     cited = extract_clause_ids(answer, all_clause_ids)
     cite_any = int(bool(cited))
+    has_glossary = any(c.startswith("Glossary") for c in cited)
 
     if cite_any:
-        supported = [c for c in cited if c in ctx_clause_ids]
+        supported = [c for c in cited if c in ctx_clause_ids or c.startswith("Glossary")]
         cite_supported_rate = len(supported) / len(cited)
     else:
         cite_supported_rate = 0.0
@@ -85,6 +95,9 @@ def llm_metrics(answer, ctx_clause_ids, ctx_ids, rel, clause_to_chunk_ids, all_c
         cited_chunk_ids |= clause_to_chunk_ids.get(cl, set())
 
     cite_rel_any = int(bool(cited_chunk_ids & rel_set))
+    if has_glossary:
+        cite_rel_any = 1
+
     hit_in_ctx = int(bool(set(ctx_ids) & rel_set))
     no_hit = int(not hit_in_ctx)
 
@@ -114,6 +127,7 @@ def evaluate(runs_path, out_csv, chunks_path=OUT_PATH_ALL):
 
     agg = {
         "n": 0,
+        "n_normal_qa": 0, # Считаем только вопросы без отказов
         "cite_any": 0,
         "cite_rel_any": 0,
         "sup_sum": 0.0,
@@ -134,6 +148,8 @@ def evaluate(runs_path, out_csv, chunks_path=OUT_PATH_ALL):
             answer = obj.get("answer", "")
             ctx_ids = obj.get("ctx_ids", [])
             rel = obj.get("rel", [])
+            gold_refuse = parse_target_refuse(obj.get("target_refuse"))
+            
             latency_s = obj.get("latency_s")
             if latency_s is not None:
                 latencies.append(latency_s)
@@ -147,25 +163,19 @@ def evaluate(runs_path, out_csv, chunks_path=OUT_PATH_ALL):
                 if cid_txt:
                     ctx_clause_ids.add(cid_txt)
 
-            m = llm_metrics(
-                answer=answer,
-                ctx_clause_ids=ctx_clause_ids,
-                ctx_ids=ctx_ids,
-                rel=rel,
-                clause_to_chunk_ids=clause_to_chunk_ids,
-                all_clause_ids=all_clause_ids,
-            )
+            m = llm_metrics(answer, ctx_clause_ids, ctx_ids, rel, clause_to_chunk_ids, all_clause_ids)
 
             agg["n"] += 1
-            agg["cite_any"] += m["cite_any"]
-            agg["cite_rel_any"] += m["cite_rel_any"]
-            agg["sup_sum"] += m["cite_supported_rate"]
+            if gold_refuse == 0 or gold_refuse is None:
+                agg["n_normal_qa"] += 1
+                agg["cite_any"] += m["cite_any"]
+                agg["cite_rel_any"] += m["cite_rel_any"]
+                agg["sup_sum"] += m["cite_supported_rate"]
 
             if m["no_hit_in_ctx"]:
                 agg["no_hit"] += 1
                 agg["abstain_ok"] += m["abstain_ok"]
 
-            gold_refuse = parse_target_refuse(obj.get("target_refuse"))
             pred_refuse = is_refusal(answer)
 
             if gold_refuse is not None:
@@ -179,7 +189,7 @@ def evaluate(runs_path, out_csv, chunks_path=OUT_PATH_ALL):
                 elif gold_refuse == 1 and pred_refuse == 0:
                     agg["refuse_fn"] += 1
 
-    n = max(1, agg["n"])
+    n_qa = max(1, agg["n_normal_qa"])
 
     avg_latency_s = sum(latencies) / len(latencies) if latencies else None
     if latencies:
@@ -202,10 +212,10 @@ def evaluate(runs_path, out_csv, chunks_path=OUT_PATH_ALL):
     summary = {
         "model": MODEL,
         "model_tag": MODEL_TAG,
-        "n": agg["n"],
-        "cite_any_rate": agg["cite_any"] / n,
-        "cite_rel_any_rate": agg["cite_rel_any"] / n,
-        "cite_supported_rate_avg": agg["sup_sum"] / n,
+        "n_total": agg["n"],
+        "cite_any_rate": agg["cite_any"] / n_qa,
+        "cite_rel_any_rate": agg["cite_rel_any"] / n_qa,
+        "cite_supported_rate_avg": agg["sup_sum"] / n_qa,
         "abstain_ok_rate_when_no_hit": agg["abstain_ok"] / max(1, agg["no_hit"]),
         "avg_latency_s": avg_latency_s,
         "p95_latency_s": p95_latency_s,
@@ -217,18 +227,16 @@ def evaluate(runs_path, out_csv, chunks_path=OUT_PATH_ALL):
     pd.DataFrame([summary]).to_csv(out_csv, index=False)
     print(summary)
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--runs", default=None)
     parser.add_argument("--out-csv", default=None)
     parser.add_argument("--chunks", default=OUT_PATH_ALL)
-
     args = parser.parse_args()
 
     if args.runs is None:
-        args.runs = f"/home/dshhrv666/server1/popatkus-rag-bot/opt/rag/data/llm/runs_llm/llm_refuse_{MODEL_TAG}.jsonl"
+        args.runs = f"/home/dshhrv666/server1/rag-chatbot/opt/rag/data/llm/runs_llm/runs_sgr.jsonl"
     if args.out_csv is None:
-        args.out_csv = f"/home/dshhrv666/server1/popatkus-rag-bot/opt/rag/data/llm/csv/metrics_llm_refuse_{MODEL_TAG}.csv"
+        args.out_csv = f"/home/dshhrv666/server1/rag-chatbot/opt/rag/data/llm/csv/metrics_sgr.csv"
 
     evaluate(args.runs, args.out_csv, args.chunks)

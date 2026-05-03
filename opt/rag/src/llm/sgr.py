@@ -25,6 +25,20 @@ def parse_json_from_llm(text):
 def generate_sgr(query, lang, ctx_ids, top_ctx=5):
     selected = ctx_ids[:top_ctx]
     clauses_text = build_clauses_text(selected)
+    if not clauses_text.strip():
+        if lang == "ru":
+            return {
+                "answer": "В предоставленных документах нет информации для ответа.", 
+                "citations": [], 
+                "found": False, 
+                "defs": []
+            }
+        return {
+                "answer": "No direct confirmation.", 
+                "citations": [], 
+                "found": False, 
+                "defs": []
+            }
     defs = format_definitions(detect_terms(query, lang), lang)
     if defs:
         clauses_text = "ИНФОРМАЦИЯ ИЗ ГЛОССАРИЯ (ОПРЕДЕЛЕНИЯ):\n" + "\n".join(defs) + "\n\nТЕКСТЫ ДОКУМЕНТОВ:\n" + clauses_text
