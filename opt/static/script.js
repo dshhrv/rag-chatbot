@@ -1,9 +1,19 @@
 document.addEventListener("DOMContentLoaded", () => {
-    const chatBox = document.getElementById("chat-box");
+    const chatArea = document.getElementById("chat-area");
+    const chatMessages = document.getElementById("chat-messages");
+    const welcomeScreen = document.getElementById("welcome-screen");
     const userInput = document.getElementById("user-input");
     const sendBtn = document.getElementById("send-btn");
 
+    function hideWelcomeScreen() {
+        if (welcomeScreen.style.display !== "none") {
+            welcomeScreen.style.display = "none";
+        }
+    }
+
     function appendMessage(text, sender, isMarkdown = false) {
+        hideWelcomeScreen();
+
         const msgDiv = document.createElement("div");
         msgDiv.classList.add("message", sender === "user" ? "user-message" : "bot-message");
 
@@ -17,20 +27,20 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         msgDiv.appendChild(contentDiv);
-        chatBox.appendChild(msgDiv);
+        chatMessages.appendChild(msgDiv);
 
-        chatBox.scrollTop = chatBox.scrollHeight;
+        chatArea.scrollTop = chatArea.scrollHeight;
         return msgDiv;
     }
 
-    async function sendMessage() {
-        const text = userInput.value.trim();
+    async function sendMessage(textToProcess = null) {
+        const text = textToProcess !== null ? textToProcess : userInput.value.trim();
         if (!text) return;
 
         appendMessage(text, "user");
         userInput.value = "";
 
-        const loadingMsg = appendMessage("Печатает...", "bot");
+        const loadingMsg = appendMessage("Поиск информации...", "bot");
         loadingMsg.querySelector('.message-content').classList.add('typing-indicator');
 
         try {
@@ -49,15 +59,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
         } catch (error) {
             loadingMsg.remove();
-            appendMessage("Ошибка соединения с сервером.", "bot");
-            console.error("Ошибка:", error);
+            appendMessage("❌ Ошибка соединения с сервером.", "bot");
+            console.error(error);
         }
     }
 
-    sendBtn.addEventListener("click", sendMessage);
+    sendBtn.addEventListener("click", () => sendMessage());
     userInput.addEventListener("keypress", (e) => {
         if (e.key === "Enter") {
             sendMessage();
         }
     });
+
+    window.setPrompt = function (text) {
+        sendMessage(text);
+    };
 });

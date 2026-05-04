@@ -4,41 +4,629 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAG Чат-бот (Попаткус)</title>
-    <link rel="stylesheet" href="style.css">
+    <title>RAG Чат-бот НИУ ВШЭ</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body,
+        html {
+            width: 100%;
+            height: 100%;
+            background-color: #ffffff;
+            color: #202124;
+            overflow: hidden;
+        }
+
+        .app-container {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        .sidebar {
+            width: 260px;
+            background-color: #ffffff;
+            border-right: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            flex-shrink: 0;
+        }
+
+        .new-chat-btn {
+            background-color: #0d6efd;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 15px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 8px;
+            cursor: pointer;
+            margin-bottom: 24px;
+            transition: background 0.2s;
+            width: 100%;
+        }
+
+        .new-chat-btn:hover {
+            background-color: #0b5ed7;
+        }
+
+        .new-chat-btn svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            overflow-y: auto;
+        }
+
+        .history-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            color: #5f6368;
+            cursor: pointer;
+            padding: 10px;
+            border-radius: 8px;
+            transition: background 0.2s;
+        }
+
+        .history-item:hover {
+            background-color: #f4f6f8;
+        }
+
+        .history-item.active {
+            background-color: #e8f0fe;
+            color: #0d6efd;
+        }
+
+        .history-item.active .history-title {
+            color: #0d6efd;
+            font-weight: 500;
+        }
+
+        .history-item svg {
+            width: 18px;
+            height: 18px;
+            margin-top: 2px;
+            flex-shrink: 0;
+        }
+
+        .history-text {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            overflow: hidden;
+            width: 100%;
+        }
+
+        .history-title {
+            font-size: 14px;
+            color: #202124;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            width: 100%;
+        }
+
+        .history-date {
+            font-size: 12px;
+            color: #888;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            background-color: #ffffff;
+        }
+
+        .main-header {
+            padding: 24px 32px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .main-header h1 {
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #202124;
+        }
+
+        .main-header p {
+            font-size: 14px;
+            color: #5f6368;
+        }
+
+        .chat-area {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        .welcome-screen {
+            max-width: 760px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .welcome-icon {
+            width: 72px;
+            height: 72px;
+            background-color: #f0f4ff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+        }
+
+        .welcome-icon svg {
+            width: 36px;
+            height: 36px;
+            color: #0d6efd;
+        }
+
+        .welcome-screen h2 {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .welcome-screen p {
+            color: #5f6368;
+            font-size: 16px;
+            margin-bottom: 40px;
+        }
+
+        .suggestions-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            width: 100%;
+        }
+
+        .suggestion-card {
+            background-color: #ffffff;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 18px 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: left;
+        }
+
+        .suggestion-card:hover {
+            border-color: #0d6efd;
+            background-color: #f8fbff;
+        }
+
+        .suggestion-card svg {
+            width: 22px;
+            height: 22px;
+            color: #0d6efd;
+            flex-shrink: 0;
+        }
+
+        .suggestion-card span {
+            font-size: 15px;
+            font-weight: 500;
+            color: #202124;
+        }
+
+        .chat-messages {
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            padding-bottom: 20px;
+        }
+
+        .message {
+            display: flex;
+            max-width: 85%;
+        }
+
+        .message-content {
+            padding: 14px 18px;
+            border-radius: 12px;
+            line-height: 1.6;
+            font-size: 15px;
+        }
+
+        .user-message {
+            align-self: flex-end;
+        }
+
+        .user-message .message-content {
+            background-color: #0d6efd;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .bot-message {
+            align-self: flex-start;
+        }
+
+        .bot-message .message-content {
+            background-color: #f8f9fa;
+            border: 1px solid #e0e0e0;
+            border-bottom-left-radius: 4px;
+        }
+
+        .bot-message .message-content p {
+            margin-bottom: 8px;
+        }
+
+        .bot-message .message-content p:last-child {
+            margin-bottom: 0;
+        }
+
+        .input-container {
+            padding: 0 32px 24px 32px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #ffffff;
+        }
+
+        .input-box {
+            width: 100%;
+            max-width: 800px;
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .input-box input {
+            width: 100%;
+            padding: 16px 60px 16px 24px;
+            background-color: #fafbfc;
+            border: 1px solid #e0e0e0;
+            border-radius: 24px;
+            font-size: 15px;
+            outline: none;
+            transition: border-color 0.2s, background-color 0.2s;
+        }
+
+        .input-box input:focus {
+            border-color: #0d6efd;
+            background-color: #ffffff;
+        }
+
+        .send-btn {
+            position: absolute;
+            right: 10px;
+            background-color: #8ab4f8;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: background-color 0.2s;
+        }
+
+        .input-box input:not(:placeholder-shown)+.send-btn {
+            background-color: #0d6efd;
+        }
+
+        .send-btn:hover {
+            background-color: #0b5ed7;
+        }
+
+        .send-btn svg {
+            width: 16px;
+            height: 16px;
+            margin-right: 2px;
+            margin-top: 2px;
+        }
+
+        .disclaimer {
+            margin-top: 12px;
+            font-size: 12px;
+            color: #888;
+            text-align: center;
+        }
+
+        .typing-indicator {
+            color: #888;
+            font-style: italic;
+        }
+
+        .help-btn {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 44px;
+            height: 44px;
+            background-color: #202124;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            z-index: 100;
+            transition: transform 0.2s;
+        }
+
+        .help-btn:hover {
+            transform: scale(1.05);
+        }
+    </style>
 </head>
 
 <body>
-    <div class="chat-container">
-        <header class="chat-header">
-            <div class="header-titles">
-                <h1>Попаткус</h1>
-                <p>Помощник по правилам и документам НИУ ВШЭ</p>
-            </div>
-        </header>
+    <div class="app-container">
+        <aside class="sidebar">
+            <button class="new-chat-btn" onclick="createNewChat()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                Новый чат
+            </button>
 
-        <main class="chat-box" id="chat-box">
-            <div class="message bot-message">
-                <div class="message-content">
-                    Привет! Я Попаткус, твой помощник по документам Вышки. Какой у тебя вопрос?
+            <div class="history-list" id="history-list"></div>
+        </aside>
+
+        <main class="main-content">
+            <header class="main-header">
+                <h1>RAG Чат-бот НИУ ВШЭ</h1>
+                <p>Помощник по регламентам для абитуриентов</p>
+            </header>
+
+            <div class="chat-area" id="chat-area">
+                <div class="welcome-screen" id="welcome-screen">
+                    <div class="welcome-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
+                            <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+                        </svg>
+                    </div>
+                    <h2>Задать вопрос</h2>
+                    <p>Получите информацию о регламентах поступления в НИУ ВШЭ</p>
+
+                    <div class="suggestions-grid">
+                        <div class="suggestion-card" onclick="setPrompt('Как поступить в НИУ ВШЭ?')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
+                                <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+                            </svg>
+                            <span>Как поступить в НИУ ВШЭ?</span>
+                        </div>
+                        <div class="suggestion-card" onclick="setPrompt('Какие документы нужны для поступления?')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                <polyline points="10 9 9 9 8 9"></polyline>
+                            </svg>
+                            <span>Какие документы нужны для поступления?</span>
+                        </div>
+                        <div class="suggestion-card" onclick="setPrompt('Какие программы обучения доступны?')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                            </svg>
+                            <span>Какие программы обучения доступны?</span>
+                        </div>
+                        <div class="suggestion-card" onclick="setPrompt('Сроки подачи документов')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <polyline points="12 6 12 12 16 14"></polyline>
+                            </svg>
+                            <span>Сроки подачи документов</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chat-messages" id="chat-messages"></div>
+            </div>
+
+            <div class="input-container">
+                <div class="input-box">
+                    <input type="text" id="user-input" placeholder="Введите ваш вопрос о поступлении в НИУ ВШЭ..."
+                        autocomplete="off" />
+                    <button class="send-btn" id="send-btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                    </button>
+                </div>
+                <div class="disclaimer">
+                    Информация предоставлена на основе актуальных регламентов НИУ ВШЭ
                 </div>
             </div>
         </main>
 
-        <div class="chat-input-container">
-            <input type="text" id="user-input" placeholder="Введите ваш вопрос..." autocomplete="off" />
-            <button id="send-btn">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                    stroke-linejoin="round">
-                    <line x1="22" y1="2" x2="11" y2="13"></line>
-                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                </svg>
-            </button>
-        </div>
+        <div class="help-btn">?</div>
     </div>
 
-    <script src="script.js"></script>
+    <script>
+        let chats = JSON.parse(localStorage.getItem('rag_chats')) || [];
+        let currentChatId = null;
+
+        const chatArea = document.getElementById("chat-area");
+        const chatMessages = document.getElementById("chat-messages");
+        const welcomeScreen = document.getElementById("welcome-screen");
+        const userInput = document.getElementById("user-input");
+        const sendBtn = document.getElementById("send-btn");
+        const historyList = document.getElementById("history-list");
+
+        function renderSidebar() {
+            historyList.innerHTML = '';
+            chats.forEach(chat => {
+                const item = document.createElement('div');
+                item.className = `history-item ${chat.id === currentChatId ? 'active' : ''}`;
+                item.onclick = () => openChat(chat.id);
+                item.innerHTML = `
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                    <div class="history-text">
+                        <div class="history-title">${chat.title}</div>
+                        <div class="history-date">${chat.date}</div>
+                    </div>
+                `;
+                historyList.appendChild(item);
+            });
+        }
+
+        window.createNewChat = function () {
+            currentChatId = null;
+            chatMessages.innerHTML = '';
+            welcomeScreen.style.display = 'flex';
+            renderSidebar();
+        };
+        window.openChat = function (id) {
+            currentChatId = id;
+            welcomeScreen.style.display = 'none';
+            chatMessages.innerHTML = '';
+            const chat = chats.find(c => c.id === id);
+            if (chat) {
+                chat.messages.forEach(msg => {
+                    renderMessageToDOM(msg.text, msg.sender, msg.isMarkdown);
+                });
+            }
+            renderSidebar();
+            chatArea.scrollTop = chatArea.scrollHeight;
+        };
+
+        function renderMessageToDOM(text, sender, isMarkdown) {
+            const msgDiv = document.createElement("div");
+            msgDiv.classList.add("message", sender === "user" ? "user-message" : "bot-message");
+            const contentDiv = document.createElement("div");
+            contentDiv.classList.add("message-content");
+            if (isMarkdown && sender === "bot") {
+                contentDiv.innerHTML = marked.parse(text);
+            } else {
+                contentDiv.textContent = text;
+            }
+            msgDiv.appendChild(contentDiv);
+            chatMessages.appendChild(msgDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+            return msgDiv;
+        }
+
+        function appendMessage(text, sender, isMarkdown = false, saveToHistory = true) {
+            if (welcomeScreen.style.display !== "none") {
+                welcomeScreen.style.display = "none";
+            }
+
+            const msgElement = renderMessageToDOM(text, sender, isMarkdown);
+
+            if (saveToHistory) {
+                if (!currentChatId) {
+                    currentChatId = Date.now().toString();
+                    let title = text.length > 25 ? text.substring(0, 25) + "..." : text;
+                    const dateStr = new Date().toLocaleDateString('ru-RU');
+                    const newChat = { id: currentChatId, title: title, date: dateStr, messages: [{ text: text, sender: sender, isMarkdown: isMarkdown }] };
+                    chats.unshift(newChat);
+                } else {
+                    const chat = chats.find(c => c.id === currentChatId);
+                    if (chat) {
+                        chat.messages.push({ text: text, sender: sender, isMarkdown: isMarkdown });
+                    }
+                }
+                localStorage.setItem('rag_chats', JSON.stringify(chats));
+                renderSidebar();
+            }
+
+            return msgElement;
+        }
+
+        window.sendMessage = async function (textToProcess = null) {
+            const text = textToProcess !== null ? textToProcess : userInput.value.trim();
+            if (!text) return;
+
+            appendMessage(text, "user");
+            userInput.value = "";
+
+            const activeChatId = currentChatId;
+
+            const loadingMsg = renderMessageToDOM("Поиск информации...", "bot", false);
+            loadingMsg.querySelector('.message-content').classList.add('typing-indicator');
+
+            try {
+                const response = await fetch("/api/chat", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ message: text })
+                });
+
+                const data = await response.json();
+                loadingMsg.remove();
+                if (currentChatId === activeChatId) {
+                    appendMessage(data.reply, "bot", true);
+                } else {
+                    const chat = chats.find(c => c.id === activeChatId);
+                    if (chat) {
+                        chat.messages.push({ text: data.reply, sender: "bot", isMarkdown: true });
+                        localStorage.setItem('rag_chats', JSON.stringify(chats));
+                    }
+                }
+            } catch (error) {
+                loadingMsg.remove();
+                if (currentChatId === activeChatId) {
+                    appendMessage("❌ Ошибка соединения с сервером.", "bot", false, false);
+                }
+            }
+        };
+
+        sendBtn.addEventListener("click", () => sendMessage());
+        userInput.addEventListener("keypress", (e) => {
+            if (e.key === "Enter") {
+                sendMessage();
+            }
+        });
+        window.setPrompt = function (text) {
+            sendMessage(text);
+        };
+        renderSidebar();
+    </script>
 </body>
 
 </html>
