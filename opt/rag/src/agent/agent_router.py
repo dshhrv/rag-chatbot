@@ -22,6 +22,15 @@ from src.llm.promts import PROMT_BASE, PROMT_COMPARISON
 from langgraph.graph import StateGraph, START, END
 from src.llm.nli import verify_answer_simple as nli_verify
 
+import os
+from langfuse import observe
+
+
+os.environ["LANGFUSE_SECRET_KEY"] = "sk-lf-29d29469-34a1-402e-ab77-45a0843b80e5" 
+os.environ["LANGFUSE_PUBLIC_KEY"] = "pk-lf-b3b3c82e-bca5-400c-8bc4-a54a920ccdac"
+os.environ["LANGFUSE_HOST"] = "https://us.cloud.langfuse.com"
+
+
 REFUSE_MODEL_PATH = ROOT / "data" / "crag" / "action_eval" / "refuse-logreg.joblib"
 
 if REFUSE_MODEL_PATH.exists():
@@ -284,6 +293,7 @@ def route_query(state):
     return state
 
 
+@observe(as_type="span")
 def retrieve_search(state):
     search_query = expand_definition_query(state.query, state.lang)
     final_ids, defs = retrieve_top(
@@ -344,6 +354,7 @@ def retry_search(state):
     return state
 
 
+@observe(as_type="span")
 def retrieve_comparison(state):
     if not state.entity_a or not state.entity_b:
         state.intent = "CLARIFY"
@@ -460,9 +471,10 @@ def escalation_node(state):
     return state
 
 
+@observe(as_type="generation")
 def generate_search_answer(state):
     ctx_ids = [item["id"] for item in state.chunks[:3]]
-    result = generate_sgr(state.query, state.lang, ctx_ids, top_ctx=3)
+    result = generate_sgr(state.query, state.lang, ctx_ids, top_ctx=1)
     state.sgr_result = result
     final_answer = result.get("answer", "")
     citations = result.get("citations", [])
@@ -472,6 +484,8 @@ def generate_search_answer(state):
     state.answer = final_answer
     return state
 
+
+@observe(as_type="generation")
 def generate_comparison_answer(state):
     ctx_ids = []
     for item in state.chunks_a[:2] + state.chunks_b[:2]:
@@ -560,6 +574,8 @@ agent_rag.add_edge("escalate", END)
 
 graph = agent_rag.compile()
 
+
+@observe()
 def run_agent(query):
     detected_lang = detect_lang(query)
     state = AgentState(query=query, lang=detected_lang)

@@ -57,8 +57,8 @@ def generate_sgr(query, lang, ctx_ids, top_ctx=5):
     raw = call_ollama(
         messages=messages,
         temperature=0.0,
-        num_ctx=2048,
-        num_predict=512,
+        num_ctx=1024,
+        num_predict=256,
         format="json",
         timeout=600,
     )
