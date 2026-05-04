@@ -474,14 +474,20 @@ def escalation_node(state):
 @observe(as_type="generation")
 def generate_search_answer(state):
     ctx_ids = [item["id"] for item in state.chunks[:3]]
-    result = generate_sgr(state.query, state.lang, ctx_ids, top_ctx=1)
-    state.sgr_result = result
-    final_answer = result.get("answer", "")
-    citations = result.get("citations", [])
-    if citations:
-        final_answer += " " + " ".join([f"[{c}]" for c in citations])
+    # result = generate_sgr(state.query, state.lang, ctx_ids, top_ctx=1)
+    # state.sgr_result = result
+    # final_answer = result.get("answer", "")
+    # citations = result.get("citations", [])
+    # if citations:
+    #     final_answer += " " + " ".join([f"[{c}]" for c in citations])
     
-    state.answer = final_answer
+    # state.answer = final_answer
+    raw_response = generate_answer(state.query, state.lang, ctx_ids)
+    if isinstance(raw_response, dict):
+        state.answer = raw_response.get("answer", str(raw_response))
+    else:
+        state.answer = str(raw_response)
+        
     return state
 
 
@@ -492,13 +498,21 @@ def generate_comparison_answer(state):
         cid = item["id"]
         if cid not in ctx_ids:
             ctx_ids.append(cid)
-    result = generate_sgr(state.query, state.lang, ctx_ids, top_ctx=4)
-    state.sgr_result = result
-    final_answer = result.get("answer", "")
-    citations = result.get("citations", [])
-    if citations:
-        final_answer += " " + " ".join([f"[{c}]" for c in citations])
-    state.answer = final_answer
+    # result = generate_sgr(state.query, state.lang, ctx_ids, top_ctx=4)
+    # state.sgr_result = result
+    # final_answer = result.get("answer", "")
+    # citations = result.get("citations", [])
+    # if citations:
+    #     final_answer += " " + " ".join([f"[{c}]" for c in citations])
+    # state.answer = final_answer
+    raw_response = generate_answer(state.query, state.lang, ctx_ids, promt=PROMT_COMPARISON)
+    
+    if isinstance(raw_response, dict):
+        state.answer = raw_response.get("answer", str(raw_response))
+    else:
+        state.answer = str(raw_response)
+        
+    return state
     return state
 
 
