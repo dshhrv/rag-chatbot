@@ -1,6 +1,6 @@
 import json
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct
+from qdrant_client.models import PointStruct, Distance, VectorParams
 from pathlib import Path
 
 BATCH = 20
@@ -12,22 +12,31 @@ VEC_LEN = 768
 
 
 def batched(iterable, n):
-    buf = []
+    buf =[]
     for x in iterable:
         buf.append(x)
         if len(buf) >= n:
             yield buf
-            buf = []
+            buf =[]
     if buf:
         yield buf
 
 
 def qdrant_upsert(collection_name, in_file, vec_len=VEC_LEN, wait=True, batch=BATCH, url=URL):
     client = QdrantClient(url=url)
+    
+    # Проверяем, существует ли коллекция, и если нет — создаем
+    existing_collections = [c.name for c in client.get_collections().collections]
+    if collection_name not in existing_collections:
+        client.create_collection(
+            collection_name=collection_name,
+            vectors_config=VectorParams(size=vec_len, distance=Distance.COSINE)
+        )
+
     with open(in_file, "r", encoding="utf-8") as f:
         for lines in batched(f, batch):
-            objs = [json.loads(l) for l in lines if l.strip()]
-            points = []
+            objs =[json.loads(l) for l in lines if l.strip()]
+            points =[]
             for o in objs:
                 pid = o["id"]
                 vec = o["vector"]
