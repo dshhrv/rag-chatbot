@@ -12,7 +12,7 @@ except ImportError:
 
 REFUSAL_RU = "В документе нет прямого подтверждения"
 REFUSAL_EN = "No direct confirmation"
-SGR_REFUSAL = "нет информации для ответа" # <--- ДОБАВИЛИ ФРАЗУ SGR
+SGR_REFUSAL = "нет информации для ответа"
 
 OUT_PATH_ALL = "data/popatkus_all_v5.jsonl"
 BRACKET_ID_RE = re.compile(r"\[([^\]\n]{1,120})\]")
@@ -59,7 +59,7 @@ def extract_clause_ids(answer, all_clause_ids):
 def is_refusal(answer):
     a_low = (answer or "").lower()
     if not a_low:
-        return 1  # Пустой ответ от заглушки - это тоже отказ
+        return 1
     return int((REFUSAL_RU.lower() in a_low) or (SGR_REFUSAL in a_low) or (REFUSAL_EN.lower() in a_low))
 
 
@@ -127,7 +127,7 @@ def evaluate(runs_path, out_csv, chunks_path=OUT_PATH_ALL):
 
     agg = {
         "n": 0,
-        "n_normal_qa": 0, # Считаем только вопросы без отказов
+        "n_normal_qa": 0,
         "cite_any": 0,
         "cite_rel_any": 0,
         "sup_sum": 0.0,

@@ -20,6 +20,7 @@ OUT_PATH_ALL = DATA_DIR / "popatkus_all_v5.jsonl"
 IN_PATH = DATA_DIR / "sets" / "refuse_50.jsonl"
 
 MODEL = "gemma3:4b-it-q4_K_M"
+# MODEL = "qwen2.5:1.5b"
 MODEL_TAG = MODEL.replace("/", "_").replace(":", "_")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
 OUT_PATH = RUNS_DIR / f"llm_refuse_{MODEL_TAG}.jsonl"
@@ -72,6 +73,7 @@ def call_ollama(messages, temperature=0.0, num_ctx=1024, num_predict=256, timeou
             "temperature": temperature,
             "num_ctx": num_ctx,
             "num_predict": num_predict,
+            "num_thread": 16
         },
         "keep_alive": "5m",
     }

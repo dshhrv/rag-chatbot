@@ -22,15 +22,14 @@ from src.llm.promts import PROMT_BASE, PROMT_COMPARISON
 from langgraph.graph import StateGraph, START, END
 from src.llm.nli import verify_answer_simple as nli_verify
 
-from src.retrieval.crag import REFUSE_MODEL, REFUSE_VECTORIZER
-
-print("REFUSE_MODEL:", "OK" if REFUSE_MODEL else "NOT LOADED")
-print("VECTORIZER:", "OK" if REFUSE_VECTORIZER else "NOT LOADED")
-
 REFUSE_MODEL_PATH = ROOT / "data" / "crag" / "action_eval" / "refuse-logreg.joblib"
 
 if REFUSE_MODEL_PATH.exists():
     load_refuse_model(REFUSE_MODEL_PATH)
+
+import src.retrieval.crag as crag
+print("REFUSE_MODEL:", "OK" if crag.REFUSE_MODEL else "NOT LOADED")
+print("VECTORIZER:", "OK" if crag.REFUSE_VECTORIZER else "NOT LOADED")
 
 
 morph = MorphAnalyzer()
@@ -73,7 +72,7 @@ EMAIL_PATTERNS = [
 ]
 
 VAGUE_PATTERNS = [
-    "что делать", "а дальше", "а потом", "это обязательно", "не успею", "что будет",
+    "что делать", "а дальше", "а потом", "это обязательно", "не успею",
     "кому писать", "куда писать", "где это", "как это",
 ]
 
@@ -243,7 +242,7 @@ def needs_clarification(query):
             return False
         return True
 
-    if any(p in q for p in VAGUE_PATTERNS):
+    if any(p in q for p in VAGUE_PATTERNS) and len(lemmas) <= 5:
         return True
 
     return False
