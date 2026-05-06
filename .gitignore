@@ -134,6 +134,7 @@ opt/rag/data/*.docx
 opt/rag/data/*.pkl
 opt/rag/data/cache/
 opt/rag/data/runs/
+opt/rag/models/
 opt/rag/data/*.jsonl
 
 *.jsonl
