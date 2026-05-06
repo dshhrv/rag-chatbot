@@ -346,3 +346,19 @@ body {
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
     z-index: 100;
 }
+
+.message-time {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 6px;
+    text-align: right;
+    padding-right: 4px;
+}
+
+.user-message .message-time {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.bot-message .message-time {
+    padding-left: 4px;
+}

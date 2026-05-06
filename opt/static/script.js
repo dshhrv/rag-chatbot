@@ -25,8 +25,16 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
             contentDiv.textContent = text;
         }
+        const timeDiv = document.createElement("div");
+        timeDiv.classList.add("message-time");
+        const now = new Date();
+        timeDiv.textContent = now.toLocaleTimeString('ru-RU', {
+            hour: '2-digit',
+            minute: '2-digit'
+        });
 
         msgDiv.appendChild(contentDiv);
+        msgDiv.appendChild(timeDiv);
         chatMessages.appendChild(msgDiv);
 
         chatArea.scrollTop = chatArea.scrollHeight;
