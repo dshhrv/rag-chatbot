@@ -2,12 +2,44 @@ import sys
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+
 import json
 import re
-from src.llm.client import build_clauses_text, call_ollama
+from typing import Optional, Dict, Any, List
+from llama_cpp import Llama, LlamaGrammar
+
+from src.llm.client import build_clauses_text
 from src.retrieval.glossary import make_dict, detect_terms, format_definitions
 
 make_dict()
+
+MODEL_PATH = ROOT / "models" / "qwen2_5_1_5b_q5_k_m.gguf"
+GRAMMAR_PATH = Path(__file__).parent / "json_schema.gbnf"
+
+_llm: Optional[Llama] = None
+_grammar: Optional[LlamaGrammar] = None
+
+
+def _get_llm():
+    global _llm
+    if _llm is None:
+        _llm = Llama(
+            model_path=str(MODEL_PATH),
+            n_ctx=2048,
+            n_threads=16,
+            n_gpu_layers=0,
+            verbose=False,
+            use_mlock=True,
+        )
+    return _llm
+
+
+def _get_grammar():
+    global _grammar
+    if _grammar is None:
+        _grammar = LlamaGrammar.from_file(str(GRAMMAR_PATH))
+    return _grammar
+
 
 def parse_json_from_llm(text):
     if not text:
@@ -18,12 +50,41 @@ def parse_json_from_llm(text):
     if start == -1 or end == -1 or end <= start:
         return None
     try:
-        return json.loads(cleaned[start:end+1])
+        result = json.loads(cleaned[start:end+1])
+        
+        answer = result.get("answer", "").strip()
+        
+        if "QUESTION:" in text and answer.lower().startswith(text.split("QUESTION:")[1].split("\n\nCONTEXT:")[0].strip().lower()[:50]):
+            parts = re.split(r'\?[\s\[]', answer, maxsplit=1)
+            answer = parts[-1].strip() if len(parts) > 1 else answer
+        citations = []
+        for c in result.get("citations", []):
+            c_str = str(c).strip()
+            match = re.match(r'^\[([^\]]+)\]', c_str)
+            if match:
+                citations.append(match.group(1).split('.')[0].strip())
+            else:
+                citations.append(c_str.split('.')[0].strip())
+        
+        return {
+            "answer": answer,
+            "citations": citations,
+            "found": result.get("found", bool(answer)),
+            "defs": result.get("defs", [])
+        }
     except json.JSONDecodeError:
         return None
 
+
 def generate_sgr(query, lang, ctx_ids, top_ctx=5):
     selected = ctx_ids[:top_ctx]
+    if not selected:
+        return {
+            "answer": "В предоставленных документах нет информации для ответа.",
+            "citations": [],
+            "found": False,
+            "defs": []
+        }
     clauses_text = build_clauses_text(selected)
     if not clauses_text.strip():
         if lang == "ru":
@@ -39,6 +100,7 @@ def generate_sgr(query, lang, ctx_ids, top_ctx=5):
                 "found": False, 
                 "defs": []
             }
+    
     defs = format_definitions(detect_terms(query, lang), lang)
     if defs:
         clauses_text = "ИНФОРМАЦИЯ ИЗ ГЛОССАРИЯ (ОПРЕДЕЛЕНИЯ):\n" + "\n".join(defs) + "\n\nТЕКСТЫ ДОКУМЕНТОВ:\n" + clauses_text
@@ -54,14 +116,17 @@ def generate_sgr(query, lang, ctx_ids, top_ctx=5):
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_content},
     ]
-    raw = call_ollama(
+
+    llm = _get_llm()
+    grammar = _get_grammar()
+    
+    raw = llm.create_chat_completion(
         messages=messages,
         temperature=0.0,
-        num_ctx=1024,
-        num_predict=256,
-        format="json",
-        timeout=600,
-    )
+        max_tokens=512,
+        stream=False,
+        grammar=grammar,
+    )["choices"][0]["message"]["content"]
 
     result = parse_json_from_llm(raw)
     if not result or not isinstance(result, dict):

@@ -60,7 +60,6 @@ def generate_sgr(query, lang, ctx_ids, top_ctx=5):
         num_ctx=2048,
         num_predict=512,
         format="json",
-        timeout=600,
     )
 
     result = parse_json_from_llm(raw)
@@ -94,7 +93,7 @@ def process_dataset_and_evaluate(input_path, output_path, out_csv, chunks_path):
             lang = obj.get("lang", "ru")
             
             rel_raw = obj.get("rel", [])
-            ctx_ids = [rel_raw] if isinstance(rel_raw, str) else rel_raw
+            ctx_ids = [rel_raw] if isinstance(rel_raw, str) else (rel_raw if isinstance(rel_raw, list) else [])
             expected = obj.get("expected_action")
             if expected == "REFUSE":
                 target_refuse = 1
@@ -103,9 +102,9 @@ def process_dataset_and_evaluate(input_path, output_path, out_csv, chunks_path):
             else:
                 target_refuse = None
             
-            start = time.time()
+            start = time.perf_counter()
             sgr_res = generate_sgr(question, lang, ctx_ids)
-            latency = time.time() - start
+            latency = time.perf_counter() - start
             
             final_answer = sgr_res.get("answer", "")
             citations = sgr_res.get("citations", [])
@@ -129,7 +128,7 @@ def process_dataset_and_evaluate(input_path, output_path, out_csv, chunks_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", default=str(ROOT / "data/sets/sgr_50_set.jsonl"))
+    parser.add_argument("--input", default=str(ROOT / "data/sets/golden_50.jsonl"))
     parser.add_argument("--output", default=str(ROOT / "data/llm/runs_llm/runs_sgr.jsonl"))
     parser.add_argument("--out-csv", default=str(ROOT / "data/llm/csv/metrics_sgr.csv"))
     parser.add_argument("--chunks", default=str(ROOT / "data/popatkus_all_v5.jsonl"))
