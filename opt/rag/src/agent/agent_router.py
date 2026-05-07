@@ -24,11 +24,8 @@ from src.llm.nli import verify_answer_simple as nli_verify
 
 import os
 from langfuse import observe
-
-
-os.environ["LANGFUSE_SECRET_KEY"] = "sk-lf-29d29469-34a1-402e-ab77-45a0843b80e5" 
-os.environ["LANGFUSE_PUBLIC_KEY"] = "pk-lf-b3b3c82e-bca5-400c-8bc4-a54a920ccdac"
-os.environ["LANGFUSE_HOST"] = "https://us.cloud.langfuse.com"
+from dotenv import load_dotenv
+load_dotenv()
 
 
 REFUSE_MODEL_PATH = ROOT / "data" / "crag" / "action_eval" / "refuse-logreg.joblib"
