@@ -26,15 +26,22 @@ OUT_PATH = RUNS_DIR / "llm_refuse_qwen2_5_1_5b_q4_k_m.jsonl"
 bm25, ids, meta = load_index(INDEX_PATH)
 chunks_map = load_chunks_map(OUT_PATH_ALL) if OUT_PATH_ALL.exists() else {}
 
-llm_model = Llama(
-    model_path=str(MODEL_PATH),
-    n_ctx=3072,
-    n_threads=4,
-    n_batch=512,
-    n_ubatch=512,
-    verbose=False,
-    use_mlock=True,
-)
+_llm_model = None
+
+
+def get_llm_model():
+    global _llm_model
+    if _llm_model is None:
+        _llm_model = Llama(
+            model_path=str(MODEL_PATH),
+            n_ctx=2048,
+            n_threads=min(4, os.cpu_count() or 2),
+            n_batch=128,
+            n_ubatch=128,
+            verbose=False,
+            use_mlock=False,
+        )
+    return _llm_model
 
 def citation_id(chunk):
     if isinstance(chunk, str):
@@ -53,13 +60,14 @@ def citation_id(chunk):
 def dump_line(f, obj):
     f.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
-def build_clauses_text(ctx_ids):
+def build_clauses_text(ctx_ids, max_chars_per_chunk=1800):
     clauses_text = ""
     for chunk_id in ctx_ids:
         chunk = chunks_map.get(chunk_id)
         if not chunk:
             continue
         text = chunk.get("text", "") if isinstance(chunk, dict) else str(chunk)
+        text = text[:max_chars_per_chunk]
         cid_txt = citation_id(chunk)
         clauses_text += f"[{cid_txt}] {text}\n"
     return clauses_text.strip()
@@ -70,6 +78,7 @@ def call_ollama(messages, temperature=0.0, num_ctx=2048, num_predict=300, format
         call_ollama.grammar = LlamaGrammar.from_file(str(GRAMMAR_PATH))
         print(f"[DEBUG] Grammar loaded: {GRAMMAR_PATH.exists()}")
     
+    llm_model = get_llm_model()
     return llm_model.create_chat_completion(
         messages=messages,
         temperature=temperature,

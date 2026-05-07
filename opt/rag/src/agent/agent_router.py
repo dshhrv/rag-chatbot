@@ -16,7 +16,7 @@ from src.retrieval.bm25 import load_index, INDEX_PATH
 from src.retrieval.retrieve import retrieve_top
 from src.retrieval.encoder import rerank_one, MODEL_RERANK, load_chunks_map
 from src.retrieval.crag import refuse, retrieve_again, load_refuse_model
-from src.llm.client import generate_answer
+from src.llm.client import build_clauses_text
 from src.llm.sgr import generate_sgr
 from src.llm.promts import PROMT_BASE, PROMT_COMPARISON
 from langgraph.graph import StateGraph, START, END
@@ -473,43 +473,65 @@ def generate_search_answer(state):
     ctx_ids = [item["id"] for item in state.chunks[:3]]
     result = generate_sgr(state.query, state.lang, ctx_ids, top_ctx=1)
     state.sgr_result = result
-    final_answer = result.get("answer", "")
-    citations = result.get("citations", [])
+
+    final_answer = str(result.get("answer", "") or "").strip()
+    citations = result.get("citations", []) or []
+
+    if not final_answer:
+        from src.llm.client import build_clauses_text
+
+        fallback = build_clauses_text(ctx_ids[:1]).strip()
+
+        if fallback:
+            fallback = fallback[:1400]
+            if len(fallback) >= 1400:
+                fallback = fallback.rsplit(" ", 1)[0] + "..."
+
+            final_answer = fallback
+        else:
+            final_answer = "Не удалось сформировать ответ, хотя релевантные фрагменты были найдены."
+
     if citations:
         final_answer += " " + " ".join([f"[{c}]" for c in citations])
-    
+
     state.answer = final_answer
-    # raw_response = generate_answer(state.query, state.lang, ctx_ids)
-    # if isinstance(raw_response, dict):
-    #     state.answer = raw_response.get("answer", str(raw_response))
-    # else:
-    #     state.answer = str(raw_response)
-        
     return state
 
 
 @observe(as_type="generation")
 def generate_comparison_answer(state):
     ctx_ids = []
+
     for item in state.chunks_a[:2] + state.chunks_b[:2]:
         cid = item["id"]
         if cid not in ctx_ids:
             ctx_ids.append(cid)
+
     result = generate_sgr(state.query, state.lang, ctx_ids, top_ctx=4)
     state.sgr_result = result
-    final_answer = result.get("answer", "")
-    citations = result.get("citations", [])
+
+    final_answer = str(result.get("answer", "") or "").strip()
+    citations = result.get("citations", []) or []
+
+    if not final_answer:
+        from src.llm.client import build_clauses_text
+
+        fallback = build_clauses_text(ctx_ids[:2]).strip()
+
+        if fallback:
+            fallback = fallback[:1800]
+            if len(fallback) >= 1800:
+                fallback = fallback.rsplit(" ", 1)[0] + "..."
+
+            final_answer = fallback
+        else:
+            final_answer = "Не удалось сформировать сравнение, хотя релевантные фрагменты были найдены."
+
     if citations:
         final_answer += " " + " ".join([f"[{c}]" for c in citations])
-    state.answer = final_answer
-    # raw_response = generate_answer(state.query, state.lang, ctx_ids, promt=PROMT_COMPARISON)
-    
-    # if isinstance(raw_response, dict):
-    #     state.answer = raw_response.get("answer", str(raw_response))
-    # else:
-    #     state.answer = str(raw_response)
-    return state
 
+    state.answer = final_answer
+    return state
 
 def route_intent_edge(state):
     intent = state_value(state, "intent")

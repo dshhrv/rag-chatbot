@@ -386,6 +386,66 @@
         .help-btn:hover {
             transform: scale(1.05);
         }
+
+
+        .message {
+            flex-direction: column;
+        }
+
+        .message-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 6px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .message:hover .message-actions {
+            opacity: 1;
+        }
+
+        .user-message .message-actions {
+            align-self: flex-end;
+        }
+
+        .bot-message .message-actions {
+            align-self: flex-start;
+        }
+
+        .action-btn {
+            width: 28px;
+            height: 28px;
+            border: none;
+            background: transparent;
+            color: #5f6368;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s, color 0.2s;
+        }
+
+        .action-btn:hover {
+            background-color: #f1f3f4;
+            color: #202124;
+        }
+
+        .action-btn.selected {
+            background-color: #e8f0fe;
+            color: #0d6efd;
+        }
+
+        .action-btn:disabled {
+            cursor: default;
+            opacity: 0.7;
+        }
+
+        .action-btn svg {
+            width: 17px;
+            height: 17px;
+        }
     </style>
 </head>
 
@@ -407,7 +467,7 @@
         <main class="main-content">
             <header class="main-header">
                 <h1>RAG Чат-бот НИУ ВШЭ</h1>
-                <p>Помощник по регламентам для абитуриентов</p>
+                <p>Помощник по аттестации, оценкам и пересдачам</p>
             </header>
 
             <div class="chat-area" id="chat-area">
@@ -420,18 +480,19 @@
                         </svg>
                     </div>
                     <h2>Задать вопрос</h2>
-                    <p>Получите информацию о регламентах поступления в НИУ ВШЭ</p>
+                    <p>Получите информацию о промежуточной аттестации, текущем контроле, пересдачах и апелляциях</p>
 
                     <div class="suggestions-grid">
-                        <div class="suggestion-card" onclick="setPrompt('Как поступить в НИУ ВШЭ?')">
+                        <div class="suggestion-card" onclick="setPrompt('Что считается академической задолженностью?')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                 stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
                                 <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
                             </svg>
-                            <span>Как поступить в НИУ ВШЭ?</span>
+                            <span>Что считается академической задолженностью?</span>
                         </div>
-                        <div class="suggestion-card" onclick="setPrompt('Какие документы нужны для поступления?')">
+                        <div class="suggestion-card"
+                            onclick="setPrompt('Что делать, если я пропустил экзамен по болезни?')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                 stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -440,23 +501,24 @@
                                 <line x1="16" y1="17" x2="8" y2="17"></line>
                                 <polyline points="10 9 9 9 8 9"></polyline>
                             </svg>
-                            <span>Какие документы нужны для поступления?</span>
+                            <span>Что делать, если я пропустил экзамен по болезни?</span>
                         </div>
-                        <div class="suggestion-card" onclick="setPrompt('Какие программы обучения доступны?')">
+                        <div class="suggestion-card"
+                            onclick="setPrompt('Когда можно подать апелляцию на оценку за экзамен?')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                 stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
                                 <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
                             </svg>
-                            <span>Какие программы обучения доступны?</span>
+                            <span>Когда можно подать апелляцию на оценку за экзамен?</span>
                         </div>
-                        <div class="suggestion-card" onclick="setPrompt('Сроки подачи документов')">
+                        <div class="suggestion-card" onclick="setPrompt('Как проходят первая и вторая пересдачи?')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                 stroke-linecap="round" stroke-linejoin="round">
                                 <circle cx="12" cy="12" r="10"></circle>
                                 <polyline points="12 6 12 12 16 14"></polyline>
                             </svg>
-                            <span>Сроки подачи документов</span>
+                            <span>Как проходят первая и вторая пересдачи?</span>
                         </div>
                     </div>
                 </div>
@@ -466,7 +528,8 @@
 
             <div class="input-container">
                 <div class="input-box">
-                    <input type="text" id="user-input" placeholder="Введите ваш вопрос о поступлении в НИУ ВШЭ..."
+                    <input type="text" id="user-input"
+                        placeholder="Введите вопрос об аттестации, оценках, пересдачах или апелляции..."
                         autocomplete="off" />
                     <button class="send-btn" id="send-btn">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -477,7 +540,7 @@
                     </button>
                 </div>
                 <div class="disclaimer">
-                    Информация предоставлена на основе актуальных регламентов НИУ ВШЭ
+                    Информация предоставлена на основе положения о промежуточной аттестации и текущем контроле НИУ ВШЭ
                 </div>
             </div>
         </main>
@@ -495,6 +558,114 @@
         const userInput = document.getElementById("user-input");
         const sendBtn = document.getElementById("send-btn");
         const historyList = document.getElementById("history-list");
+
+        function iconCopy() {
+            return `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+            `;
+        }
+
+        function iconThumbUp() {
+            return `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M7 10v12"></path>
+                    <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a2.3 2.3 0 0 1 3 3.88Z"></path>
+                </svg>
+            `;
+        }
+
+        function iconThumbDown() {
+            return `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 14V2"></path>
+                    <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a2.3 2.3 0 0 1-3-3.88Z"></path>
+                </svg>
+            `;
+        }
+
+        async function copyTextToClipboard(text, button) {
+            try {
+                await navigator.clipboard.writeText(text);
+                const old = button.innerHTML;
+                button.textContent = "✓";
+                setTimeout(() => {
+                    button.innerHTML = old;
+                }, 900);
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        async function sendFeedback(requestId, rating, message, answer, button) {
+            if (!requestId) {
+                return;
+            }
+
+            try {
+                await fetch("/api/feedback", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        request_id: requestId,
+                        rating: rating,
+                        message: message,
+                        answer: answer
+                    })
+                });
+
+                const row = button.closest(".message-actions");
+                row.querySelectorAll("[data-feedback]").forEach(btn => {
+                    btn.classList.remove("selected");
+                    btn.disabled = true;
+                });
+
+                button.classList.add("selected");
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        function addMessageActions(msgDiv, text, sender, meta = {}) {
+            const actions = document.createElement("div");
+            actions.classList.add("message-actions");
+
+            const copyBtn = document.createElement("button");
+            copyBtn.classList.add("action-btn");
+            copyBtn.type = "button";
+            copyBtn.title = "Скопировать";
+            copyBtn.innerHTML = iconCopy();
+            copyBtn.onclick = () => copyTextToClipboard(text, copyBtn);
+            actions.appendChild(copyBtn);
+
+            if (sender === "bot" && meta.requestId) {
+                const upBtn = document.createElement("button");
+                upBtn.classList.add("action-btn");
+                upBtn.type = "button";
+                upBtn.title = "Хороший ответ";
+                upBtn.dataset.feedback = "up";
+                upBtn.innerHTML = iconThumbUp();
+                upBtn.onclick = () => sendFeedback(meta.requestId, "up", meta.question || "", text, upBtn);
+
+                const downBtn = document.createElement("button");
+                downBtn.classList.add("action-btn");
+                downBtn.type = "button";
+                downBtn.title = "Плохой ответ";
+                downBtn.dataset.feedback = "down";
+                downBtn.innerHTML = iconThumbDown();
+                downBtn.onclick = () => sendFeedback(meta.requestId, "down", meta.question || "", text, downBtn);
+
+                actions.appendChild(upBtn);
+                actions.appendChild(downBtn);
+            }
+
+            msgDiv.appendChild(actions);
+        }
 
         function renderSidebar() {
             historyList.innerHTML = '';
@@ -521,56 +692,83 @@
             welcomeScreen.style.display = 'flex';
             renderSidebar();
         };
+
         window.openChat = function (id) {
             currentChatId = id;
             welcomeScreen.style.display = 'none';
             chatMessages.innerHTML = '';
+
             const chat = chats.find(c => c.id === id);
             if (chat) {
                 chat.messages.forEach(msg => {
-                    renderMessageToDOM(msg.text, msg.sender, msg.isMarkdown);
+                    renderMessageToDOM(msg.text, msg.sender, msg.isMarkdown, msg.meta || {});
                 });
             }
+
             renderSidebar();
             chatArea.scrollTop = chatArea.scrollHeight;
         };
 
-        function renderMessageToDOM(text, sender, isMarkdown) {
+        function renderMessageToDOM(text, sender, isMarkdown, meta = {}) {
             const msgDiv = document.createElement("div");
             msgDiv.classList.add("message", sender === "user" ? "user-message" : "bot-message");
+
             const contentDiv = document.createElement("div");
             contentDiv.classList.add("message-content");
+
             if (isMarkdown && sender === "bot") {
                 contentDiv.innerHTML = marked.parse(text);
             } else {
                 contentDiv.textContent = text;
             }
+
             msgDiv.appendChild(contentDiv);
+
+            if (!meta.hideActions) {
+                addMessageActions(msgDiv, text, sender, meta);
+            }
+
             chatMessages.appendChild(msgDiv);
             chatArea.scrollTop = chatArea.scrollHeight;
+
             return msgDiv;
         }
 
-        function appendMessage(text, sender, isMarkdown = false, saveToHistory = true) {
+        function appendMessage(text, sender, isMarkdown = false, saveToHistory = true, meta = {}) {
             if (welcomeScreen.style.display !== "none") {
                 welcomeScreen.style.display = "none";
             }
 
-            const msgElement = renderMessageToDOM(text, sender, isMarkdown);
+            const msgElement = renderMessageToDOM(text, sender, isMarkdown, meta);
 
             if (saveToHistory) {
+                const messageData = {
+                    text: text,
+                    sender: sender,
+                    isMarkdown: isMarkdown,
+                    meta: meta
+                };
+
                 if (!currentChatId) {
                     currentChatId = Date.now().toString();
                     let title = text.length > 25 ? text.substring(0, 25) + "..." : text;
                     const dateStr = new Date().toLocaleDateString('ru-RU');
-                    const newChat = { id: currentChatId, title: title, date: dateStr, messages: [{ text: text, sender: sender, isMarkdown: isMarkdown }] };
+
+                    const newChat = {
+                        id: currentChatId,
+                        title: title,
+                        date: dateStr,
+                        messages: [messageData]
+                    };
+
                     chats.unshift(newChat);
                 } else {
                     const chat = chats.find(c => c.id === currentChatId);
                     if (chat) {
-                        chat.messages.push({ text: text, sender: sender, isMarkdown: isMarkdown });
+                        chat.messages.push(messageData);
                     }
                 }
+
                 localStorage.setItem('rag_chats', JSON.stringify(chats));
                 renderSidebar();
             }
@@ -587,7 +785,10 @@
 
             const activeChatId = currentChatId;
 
-            const loadingMsg = renderMessageToDOM("Поиск информации...", "bot", false);
+            const loadingMsg = renderMessageToDOM("Поиск информации...", "bot", false, {
+                hideActions: true
+            });
+
             loadingMsg.querySelector('.message-content').classList.add('typing-indicator');
 
             try {
@@ -599,32 +800,49 @@
 
                 const data = await response.json();
                 loadingMsg.remove();
+
+                const botMeta = {
+                    requestId: data.request_id,
+                    question: text
+                };
+
                 if (currentChatId === activeChatId) {
-                    appendMessage(data.reply, "bot", true);
+                    appendMessage(data.reply, "bot", true, true, botMeta);
                 } else {
                     const chat = chats.find(c => c.id === activeChatId);
                     if (chat) {
-                        chat.messages.push({ text: data.reply, sender: "bot", isMarkdown: true });
+                        chat.messages.push({
+                            text: data.reply,
+                            sender: "bot",
+                            isMarkdown: true,
+                            meta: botMeta
+                        });
                         localStorage.setItem('rag_chats', JSON.stringify(chats));
                     }
                 }
             } catch (error) {
                 loadingMsg.remove();
+
                 if (currentChatId === activeChatId) {
-                    appendMessage("❌ Ошибка соединения с сервером.", "bot", false, false);
+                    appendMessage("❌ Ошибка соединения с сервером.", "bot", false, false, {
+                        hideActions: true
+                    });
                 }
             }
         };
 
         sendBtn.addEventListener("click", () => sendMessage());
+
         userInput.addEventListener("keypress", (e) => {
             if (e.key === "Enter") {
                 sendMessage();
             }
         });
+
         window.setPrompt = function (text) {
             sendMessage(text);
         };
+
         renderSidebar();
     </script>
 </body>

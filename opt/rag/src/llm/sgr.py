@@ -5,6 +5,7 @@ sys.path.insert(0, str(ROOT))
 
 import json
 import re
+import os
 from typing import Optional, Dict, Any, List
 from llama_cpp import Llama, LlamaGrammar
 
@@ -26,19 +27,33 @@ def _get_llm():
         _llm = Llama(
             model_path=str(MODEL_PATH),
             n_ctx=2048,
-            n_threads=16,
+            n_threads=min(4, os.cpu_count() or 2),
+            n_batch=128,
+            n_ubatch=128,
             n_gpu_layers=0,
             verbose=False,
-            use_mlock=True,
+            use_mlock=False,
         )
     return _llm
-
 
 def _get_grammar():
     global _grammar
     if _grammar is None:
         _grammar = LlamaGrammar.from_file(str(GRAMMAR_PATH))
     return _grammar
+
+
+def is_definition_query(query):
+    q = query.lower().replace("ё", "е")
+    markers = [
+        "что такое",
+        "что значит",
+        "что означает",
+        "определение",
+        "расшифруй",
+        "расшифровка",
+    ]
+    return any(marker in q for marker in markers)
 
 
 def parse_json_from_llm(text):
@@ -77,6 +92,18 @@ def parse_json_from_llm(text):
 
 
 def generate_sgr(query, lang, ctx_ids, top_ctx=5):
+    defs = format_definitions(detect_terms(query, lang), lang)
+
+    if defs and is_definition_query(query):
+        terms = detect_terms(query, lang)
+        citations = [f"Glossary, {term.upper()}" for term in terms]
+
+        return {
+            "answer": "\n".join(defs),
+            "citations": citations,
+            "found": True,
+            "defs": defs,
+        }
     selected = ctx_ids[:top_ctx]
     if not selected:
         return {
@@ -86,6 +113,7 @@ def generate_sgr(query, lang, ctx_ids, top_ctx=5):
             "defs": []
         }
     clauses_text = build_clauses_text(selected)
+    clauses_text = clauses_text[:3500]
     if not clauses_text.strip():
         if lang == "ru":
             return {
@@ -101,10 +129,11 @@ def generate_sgr(query, lang, ctx_ids, top_ctx=5):
                 "defs": []
             }
     
-    defs = format_definitions(detect_terms(query, lang), lang)
+    # defs = format_definitions(detect_terms(query, lang), lang)
     if defs:
         clauses_text = "ИНФОРМАЦИЯ ИЗ ГЛОССАРИЯ (ОПРЕДЕЛЕНИЯ):\n" + "\n".join(defs) + "\n\nТЕКСТЫ ДОКУМЕНТОВ:\n" + clauses_text
-
+        clauses_text = clauses_text[:4000]
+        
     if not clauses_text.strip():
         return {"answer": "", "citations": [], "found": False, "defs": []}
         
@@ -123,7 +152,7 @@ def generate_sgr(query, lang, ctx_ids, top_ctx=5):
     raw = llm.create_chat_completion(
         messages=messages,
         temperature=0.0,
-        max_tokens=512,
+        max_tokens=220,
         stream=False,
         grammar=grammar,
     )["choices"][0]["message"]["content"]
