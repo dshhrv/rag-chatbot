@@ -114,6 +114,11 @@ class AgentState():
     defs: list = field(default_factory=list)
     answer: Optional[str] = None
     escalation_reason: Optional[str] = None
+    timings: Dict[str, float] = field(default_factory=dict)
+    skip_generation: bool = False
+    generation_called: bool = False
+    answer_len_chars: int = 0
+    answer_source: str = "none"
 
 
 def get_chunks_map():
@@ -160,6 +165,73 @@ def state_value(state, key, default=None):
     if isinstance(state, dict):
         return state.get(key, default)
     return getattr(state, key, default)
+
+
+def set_state_value(state, key, value):
+    if isinstance(state, dict):
+        state[key] = value
+    else:
+        setattr(state, key, value)
+    return state
+
+
+def state_timings(state):
+    if isinstance(state, dict):
+        return state.setdefault("timings", {})
+    if not hasattr(state, "timings") or state.timings is None:
+        state.timings = {}
+    return state.timings
+
+
+def add_timing(state, name, seconds):
+    timings = state_timings(state)
+    ms = round(seconds * 1000, 2)
+    timings[name] = round(timings.get(name, 0.0) + ms, 2)
+    return state
+
+
+def set_answer_metadata(state, source, generation_called=False):
+    answer = state_value(state, "answer", "") or ""
+    set_state_value(state, "answer_source", source)
+    set_state_value(state, "generation_called", bool(generation_called))
+    set_state_value(state, "answer_len_chars", len(str(answer)))
+    return state
+
+
+def timed_node(name, fn):
+    def wrapper(state):
+        t0 = time.perf_counter()
+        out = fn(state)
+        add_timing(out, name, time.perf_counter() - t0)
+        return out
+
+    return wrapper
+
+
+def format_generated_answer(result, ctx_ids, fallback_limit=1400, empty_message="Не удалось сформировать ответ, хотя релевантные фрагменты были найдены."):
+    final_answer = str(result.get("answer", "") or "").strip()
+    citations = result.get("citations", []) or []
+
+    if final_answer:
+        source = "sgr_answer"
+    else:
+        fallback = build_clauses_text(ctx_ids[:1]).strip()
+
+        if fallback:
+            fallback = fallback[:fallback_limit]
+            if len(fallback) >= fallback_limit:
+                fallback = fallback.rsplit(" ", 1)[0] + "..."
+
+            final_answer = fallback
+            source = "fallback_context"
+        else:
+            final_answer = empty_message
+            source = "fallback_empty"
+
+    if citations:
+        final_answer += " " + " ".join([f"[{c}]" for c in citations])
+
+    return final_answer, source
 
 
 def normalize_query(query):
@@ -253,16 +325,52 @@ def needs_clarification(query):
 
     return False
 
+def get_sgr_citations(state):
+    result = state.sgr_result or {}
+    citations = result.get("citations") or []
+    if isinstance(citations, str):
+        citations = [item.strip() for item in citations.split("|") if item.strip()]
+    return [str(item).strip() for item in citations if str(item).strip()]
+
+
+def get_verifier_context_ids(state):
+    context_ids = []
+    if state.intent == "COMPARISON":
+        chunks = state.chunks_a[:2] + state.chunks_b[:2]
+    else:
+        chunks = state.chunks[:3]
+    for chunk in chunks:
+        chunk_id = chunk.get("id")
+        if chunk_id and chunk_id not in context_ids:
+            context_ids.append(chunk_id)
+    return context_ids
+
+
 def verify_answer_node(state):
-    lower_ans = (state.answer or "").lower()
-    if any(x in lower_ans for x in ["No direct confirmation.", "В предоставленных документах нет информации для ответа."]):
-        return state  
-    premise_parts = [c.get("text", "") for c in state.chunks[:2] if c.get("text")]
-    premise = " ".join(premise_parts)[:1000]
-    result = nli_verify(premise, state.answer)
-    state.is_hallucination = result["is_hallucination"]
-    if state.is_hallucination:
-        state.escalation_reason = f"nli_{result['label']}"
+    answer = state.answer or ""
+    answer_lower = answer.lower()
+    empty_answer_markers = [
+        "no direct confirmation",
+        "в предоставленных документах нет информации для ответа",
+        "не удалось сформировать ответ",
+        "не удалось сформировать сравнение",
+    ]
+    if any(marker in answer_lower for marker in empty_answer_markers):
+        state.is_hallucination = False
+        return state
+    citations = get_sgr_citations(state)
+    if citations:
+        state.is_hallucination = False
+        return state
+    context_ids = get_verifier_context_ids(state)
+    premise = build_clauses_text(context_ids).strip()[:1500]
+    result = nli_verify(premise, answer)
+    label = str(result.get("label", "")).lower().strip()
+    if label == "contradiction":
+        state.is_hallucination = True
+        state.escalation_reason = "no_citations_nli_contradiction"
+    else:
+        state.is_hallucination = False
     return state
 
 def route_query(state):
@@ -429,7 +537,7 @@ def draft_email(state):
         state.answer = "The email draft is ready. Please add the recipient, subject, and your details before sending."
     else:
         state.answer = "Черновик письма готов. Добавь адресата, тему и свои данные перед отправкой."
-    return state
+    return set_answer_metadata(state, "static_email", generation_called=False)
 
 
 def judge_comparison(state):
@@ -449,14 +557,14 @@ def clarify_node(state):
         state.answer = "Please clarify what exactly you mean. For example: retakes, academic leave, or certificates."
     else:
         state.answer = "Уточни, пожалуйста, что именно ты имеешь в виду. Например: пересдачи, академический отпуск, ИУП или справка."
-    return state
+    return set_answer_metadata(state, "static_clarify", generation_called=False)
 
 def refuse_node(state):
     if state.lang == "en":
         state.answer = "I cannot help with this request. Please rephrase your question according to Popatkus rules."
     else:
         state.answer = "Я не могу помочь с таким запросом. Лучше переформулируй вопрос в рамках правил и регламентов Попаткуса."
-    return state
+    return set_answer_metadata(state, "static_refuse", generation_called=False)
 
 
 
@@ -465,41 +573,35 @@ def escalation_node(state):
         state.answer = "I couldn't find a reliable answer. Let me transfer you to a human operator."
     else:
         state.answer = "Не удалось надежно найти ответ. Лучше передать вопрос оператору."
-    return state
+    return set_answer_metadata(state, "static_escalate", generation_called=False)
 
 
 @observe(as_type="generation")
 def generate_search_answer(state):
+    if state.skip_generation:
+        state.answer = "__GENERATION_SKIPPED__"
+        state.sgr_result = {"answer": state.answer, "citations": []}
+        return set_answer_metadata(state, "skipped", generation_called=False)
+
     ctx_ids = [item["id"] for item in state.chunks[:3]]
     result = generate_sgr(state.query, state.lang, ctx_ids, top_ctx=1)
     state.sgr_result = result
-
-    final_answer = str(result.get("answer", "") or "").strip()
-    citations = result.get("citations", []) or []
-
-    if not final_answer:
-        from src.llm.client import build_clauses_text
-
-        fallback = build_clauses_text(ctx_ids[:1]).strip()
-
-        if fallback:
-            fallback = fallback[:1400]
-            if len(fallback) >= 1400:
-                fallback = fallback.rsplit(" ", 1)[0] + "..."
-
-            final_answer = fallback
-        else:
-            final_answer = "Не удалось сформировать ответ, хотя релевантные фрагменты были найдены."
-
-    if citations:
-        final_answer += " " + " ".join([f"[{c}]" for c in citations])
-
-    state.answer = final_answer
-    return state
+    state.answer, source = format_generated_answer(
+        result=result,
+        ctx_ids=ctx_ids,
+        fallback_limit=1400,
+        empty_message="Не удалось сформировать ответ, хотя релевантные фрагменты были найдены.",
+    )
+    return set_answer_metadata(state, source, generation_called=True)
 
 
 @observe(as_type="generation")
 def generate_comparison_answer(state):
+    if state.skip_generation:
+        state.answer = "__GENERATION_SKIPPED__"
+        state.sgr_result = {"answer": state.answer, "citations": []}
+        return set_answer_metadata(state, "skipped", generation_called=False)
+
     ctx_ids = []
 
     for item in state.chunks_a[:2] + state.chunks_b[:2]:
@@ -509,29 +611,13 @@ def generate_comparison_answer(state):
 
     result = generate_sgr(state.query, state.lang, ctx_ids, top_ctx=4)
     state.sgr_result = result
-
-    final_answer = str(result.get("answer", "") or "").strip()
-    citations = result.get("citations", []) or []
-
-    if not final_answer:
-        from src.llm.client import build_clauses_text
-
-        fallback = build_clauses_text(ctx_ids[:2]).strip()
-
-        if fallback:
-            fallback = fallback[:1800]
-            if len(fallback) >= 1800:
-                fallback = fallback.rsplit(" ", 1)[0] + "..."
-
-            final_answer = fallback
-        else:
-            final_answer = "Не удалось сформировать сравнение, хотя релевантные фрагменты были найдены."
-
-    if citations:
-        final_answer += " " + " ".join([f"[{c}]" for c in citations])
-
-    state.answer = final_answer
-    return state
+    state.answer, source = format_generated_answer(
+        result=result,
+        ctx_ids=ctx_ids[:2],
+        fallback_limit=1800,
+        empty_message="Не удалось сформировать сравнение, хотя релевантные фрагменты были найдены.",
+    )
+    return set_answer_metadata(state, source, generation_called=True)
 
 def route_intent_edge(state):
     intent = state_value(state, "intent")
@@ -568,24 +654,24 @@ def judge_comparison_edge(state):
 
 
 def verify_router(state):
-    return "escalate" if state.is_hallucination else "end"
+    return "escalate" if state_value(state, "is_hallucination", False) else "end"
 
 
 agent_rag = StateGraph(AgentState)
-agent_rag.add_node("route_intent", route_query)
-agent_rag.add_node("retrieve_search", retrieve_search)
-agent_rag.add_node("judge_search", judge_search)
-agent_rag.add_node("retry_search", retry_search)
-agent_rag.add_node("retrieve_comparison", retrieve_comparison)
-agent_rag.add_node("judge_comparison", judge_comparison)
-agent_rag.add_node("retry_comparison", retry_comparison)
-agent_rag.add_node("generate_search_answer", generate_search_answer)
-agent_rag.add_node("generate_comparison_answer", generate_comparison_answer)
-agent_rag.add_node("draft_email", draft_email)
-agent_rag.add_node("clarify", clarify_node)
-agent_rag.add_node("verify_answer", verify_answer_node)
-agent_rag.add_node("refuse", refuse_node)
-agent_rag.add_node("escalate", escalation_node)
+agent_rag.add_node("route_intent", timed_node("route_intent", route_query))
+agent_rag.add_node("retrieve_search", timed_node("retrieve_search", retrieve_search))
+agent_rag.add_node("judge_search", timed_node("judge_search", judge_search))
+agent_rag.add_node("retry_search", timed_node("retry_search", retry_search))
+agent_rag.add_node("retrieve_comparison", timed_node("retrieve_comparison", retrieve_comparison))
+agent_rag.add_node("judge_comparison", timed_node("judge_comparison", judge_comparison))
+agent_rag.add_node("retry_comparison", timed_node("retry_comparison", retry_comparison))
+agent_rag.add_node("generate_search_answer", timed_node("generate_search_answer", generate_search_answer))
+agent_rag.add_node("generate_comparison_answer", timed_node("generate_comparison_answer", generate_comparison_answer))
+agent_rag.add_node("draft_email", timed_node("draft_email", draft_email))
+agent_rag.add_node("clarify", timed_node("clarify", clarify_node))
+agent_rag.add_node("verify_answer", timed_node("verify_answer", verify_answer_node))
+agent_rag.add_node("refuse", timed_node("refuse", refuse_node))
+agent_rag.add_node("escalate", timed_node("escalate", escalation_node))
 
 agent_rag.add_edge(START, "route_intent")
 agent_rag.add_conditional_edges("route_intent", route_intent_edge)
@@ -606,14 +692,110 @@ agent_rag.add_edge("escalate", END)
 graph = agent_rag.compile()
 
 
+def finalize_timings(state, total_s, mode):
+    timings = state_timings(state)
+    total_ms = round(total_s * 1000, 2)
+    timings["total"] = total_ms
+
+    if mode == "agent":
+        core_ms = (
+            timings.get("retrieve_search", 0.0)
+            + timings.get("retry_search", 0.0)
+            + timings.get("retrieve_comparison", 0.0)
+            + timings.get("retry_comparison", 0.0)
+            + timings.get("generate_search_answer", 0.0)
+            + timings.get("generate_comparison_answer", 0.0)
+        )
+        timings["agentic_overhead"] = round(max(total_ms - core_ms, 0.0), 2)
+
+    return state
+
+
 @observe()
-def run_agent(query):
+def run_agent(query, include_generation=True):
     detected_lang = detect_lang(query)
-    state = AgentState(query=query, lang=detected_lang)
+    state = AgentState(
+        query=query,
+        lang=detected_lang,
+        skip_generation=not include_generation,
+    )
     return graph.invoke(state, config={"recursion_limit": 50})
 
-def run_agent_timed(query):
+
+def run_agent_timed(query, include_generation=True):
     t0 = time.perf_counter()
-    state = run_agent(query)
-    t1 = time.perf_counter()
-    return state, round(t1 - t0, 3)
+    state = run_agent(query, include_generation=include_generation)
+    total_s = time.perf_counter() - t0
+    finalize_timings(state, total_s, mode="agent")
+    return state, round(total_s, 3)
+
+
+def run_baseline(query, include_generation=True):
+    lang = detect_lang(query)
+    timings = {}
+    total_t0 = time.perf_counter()
+
+    search_query = expand_definition_query(query, lang)
+
+    t0 = time.perf_counter()
+    final_ids, defs = retrieve_top(
+        query=search_query,
+        lang=lang,
+        bm25=bm25,
+        ids=ids,
+        meta=meta,
+        top_dense=80,
+        top_bm25=10,
+        top_final=10,
+        only_english=False,
+    )
+    timings["baseline_retrieve"] = round((time.perf_counter() - t0) * 1000, 2)
+
+    t0 = time.perf_counter()
+    chunks = rerank_items(query, final_ids)
+    timings["baseline_rerank"] = round((time.perf_counter() - t0) * 1000, 2)
+
+    result = None
+    answer = "__GENERATION_SKIPPED__"
+    answer_source = "skipped"
+    generation_called = False
+
+    if include_generation:
+        t0 = time.perf_counter()
+        ctx_ids = [item["id"] for item in chunks[:3]]
+        result = generate_sgr(query, lang, ctx_ids, top_ctx=1)
+        answer, answer_source = format_generated_answer(
+            result=result,
+            ctx_ids=ctx_ids,
+            fallback_limit=1400,
+            empty_message="Не удалось сформировать ответ, хотя релевантные фрагменты были найдены.",
+        )
+        generation_called = True
+        timings["baseline_generate"] = round((time.perf_counter() - t0) * 1000, 2)
+    else:
+        timings["baseline_generate"] = 0.0
+
+    total_ms = round((time.perf_counter() - total_t0) * 1000, 2)
+    timings["total"] = total_ms
+
+    return {
+        "query": query,
+        "lang": lang,
+        "intent": "BASELINE_SEARCH",
+        "chunks": chunks,
+        "defs": defs,
+        "answer": answer,
+        "sgr_result": result,
+        "generation_called": generation_called,
+        "answer_source": answer_source,
+        "answer_len_chars": len(str(answer or "")),
+        "timings": timings,
+    }
+
+
+def run_baseline_timed(query, include_generation=True):
+    t0 = time.perf_counter()
+    state = run_baseline(query, include_generation=include_generation)
+    total_s = time.perf_counter() - t0
+    state["timings"]["total"] = round(total_s * 1000, 2)
+    return state, round(total_s, 3)
