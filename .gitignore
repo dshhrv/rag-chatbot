@@ -178,6 +178,7 @@ celerybeat.pid
 env/
 venv/
 ENV/
+qdrant_storage/*
 env.bak/
 venv.bak/
 
