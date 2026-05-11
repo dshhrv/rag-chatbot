@@ -9,7 +9,7 @@ from typing import Literal, Optional
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest, start_http_server
 from starlette.responses import Response
 import uvicorn
 
@@ -72,7 +72,7 @@ def feedback_endpoint(req: FeedbackRequest):
 
 
 @app.post("/api/chat")
-def chat_endpoint(req: ChatRequest):
+async def chat_endpoint(req: ChatRequest):
     request_id = str(uuid.uuid4())
     message = req.message
 
@@ -157,4 +157,5 @@ app.mount("/", StaticFiles(directory=CURRENT_DIR / "static", html=True), name="s
 
 if __name__ == "__main__":
     print("Сервер запущен! Откройте браузер по адресу: http://localhost:8000")
+    start_http_server(8001)
     uvicorn.run(app, host="0.0.0.0", port=8000)
