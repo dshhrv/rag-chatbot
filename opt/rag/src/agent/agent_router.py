@@ -208,6 +208,17 @@ def timed_node(name, fn):
     return wrapper
 
 
+def strip_inline_citations(answer, citations):
+    cleaned = str(answer or "").strip()
+
+    for citation in citations or []:
+        citation = str(citation).strip()
+        if citation:
+            cleaned = re.sub(rf"\s*\[{re.escape(citation)}\](?=\s|$|[.,:;!?])", "", cleaned)
+
+    return re.sub(r"[ \t]{2,}", " ", cleaned).strip()
+
+
 def format_generated_answer(result, ctx_ids, fallback_limit=1400, empty_message="Не удалось сформировать ответ, хотя релевантные фрагменты были найдены."):
     final_answer = str(result.get("answer", "") or "").strip()
     citations = result.get("citations", []) or []
@@ -228,10 +239,7 @@ def format_generated_answer(result, ctx_ids, fallback_limit=1400, empty_message=
             final_answer = empty_message
             source = "fallback_empty"
 
-    if citations:
-        final_answer += " " + " ".join([f"[{c}]" for c in citations])
-
-    return final_answer, source
+    return strip_inline_citations(final_answer, citations), source
 
 
 def normalize_query(query):
