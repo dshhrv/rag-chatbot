@@ -1,0 +1,10 @@
+method,label,count,rate_pct
+decomposed,entailment,7,14.0
+decomposed,neutral,36,72.0
+decomposed,contradiction,7,14.0
+simple,entailment,8,16.0
+simple,neutral,35,70.0
+simple,contradiction,7,14.0
+threshold,entailment,8,16.0
+threshold,neutral,35,70.0
+threshold,contradiction,7,14.0

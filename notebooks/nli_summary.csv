@@ -1,0 +1,4 @@
+method,count,mean_nli_latency_ms,p50_nli_latency_ms,p95_nli_latency_ms,p99_nli_latency_ms,min_nli_latency_ms,max_nli_latency_ms,entailment_count,neutral_count,contradiction_count,entailment_rate_pct,neutral_rate_pct,contradiction_rate_pct,hallucination_count,hallucination_rate_pct,mean_entailment_score,mean_neutral_score,mean_contradiction_score
+decomposed,50,9398.69,7200.96,21047.1,36445.92,4225.94,49018.16,7,36,7,14.0,72.0,14.0,44,88.0,0.1417,0.7195,0.1388
+simple,50,7008.67,7156.19,8013.51,11408.34,4228.27,13589.14,8,35,7,16.0,70.0,14.0,7,14.0,0.1592,0.7036,0.1373
+threshold,50,7000.97,7146.1,7982.12,11421.39,4233.86,13593.18,8,35,7,16.0,70.0,14.0,43,86.0,0.1592,0.7036,0.1373
