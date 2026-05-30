@@ -28,7 +28,6 @@ NON_LLM_SOURCES = {
     "static_clarify",
     "static_refuse",
     "static_escalate",
-    "static_email",
     "none",
     "unknown",
 }
@@ -106,7 +105,7 @@ def make_record(query_id, query, mode, include_generation, state):
         verify_ms = get_stage_ms(timings, "verify_answer")
         route_ms = get_stage_ms(timings, "route_intent")
         judge_ms = get_stage_ms(timings, "judge_search", "judge_comparison")
-        static_ms = get_stage_ms(timings, "draft_email", "clarify", "refuse", "escalate")
+        static_ms = get_stage_ms(timings, "clarify", "refuse", "escalate")
         agent_logic_ms = get_stage_ms(timings, "agentic_overhead")
 
     total_ms = round(float(timings.get("total", 0.0) or 0.0), 2)

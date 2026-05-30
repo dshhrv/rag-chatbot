@@ -116,7 +116,7 @@ def run_agent(query, lang="ru", mode="hybrid"):
     if state.intent in {"SEARCH", "COMPARISON"}:
         state = execute_flow(state, mode, state.intent)
 
-    routes = {"SEARCH": "generate_search_answer", "COMPARISON": "generate_comparison_answer", "EMAIL": "draft_email", "CLARIFY": "clarify", "REFUSE": "refuse", "ESCALATION": "escalate"}
+    routes = {"SEARCH": "generate_search_answer", "COMPARISON": "generate_comparison_answer", "CLARIFY": "clarify", "REFUSE": "refuse", "ESCALATION": "escalate"}
     
     return {
         "initial_action": init_action, "predicted_action": state.intent, "terminal_route": routes.get(state.intent),

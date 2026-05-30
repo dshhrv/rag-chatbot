@@ -16,8 +16,6 @@ generate_search_answer
 
 generate_comparison_answer
 
-draft_email
-
 clarify
 
 refuse
@@ -31,7 +29,6 @@ START
 route_intent
  -> SEARCH -> retrieve_search
  -> COMPARISON -> retrieve_comparison
- -> EMAIL -> draft_email
  -> CLARIFY -> clarify
  -> REFUSE -> refuse
 
@@ -51,7 +48,6 @@ judge_comparison
 
 retry_comparison -> judge_comparison
 
-draft_email -> END
 clarify -> END
 refuse -> END
 generate_search_answer -> END

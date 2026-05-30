@@ -73,10 +73,6 @@ COMPARISON_MARKERS = [
     "чем отличается", "в чем разница", "разница между", "сравни", "сравнить", "what is the difference between", "difference between", "how does", "differ from", "compare"
     ]
 
-EMAIL_PATTERNS = [
-    "напиши письмо", "составь письмо", "черновик письма", "draft email", "write email", "email to",
-]
-
 VAGUE_PATTERNS = [
     "что делать", "а дальше", "а потом", "это обязательно", "не успею",
     "кому писать", "куда писать", "где это", "как это",
@@ -92,7 +88,7 @@ DOMAIN_HINTS = {
     "пересдача", "долг", "задолженность", "справка",
 }
 
-Intent = Literal["ESCALATION", "COMPARISON", "REFUSE", "CLARIFY", "SEARCH", "EMAIL"]
+Intent = Literal["ESCALATION", "COMPARISON", "REFUSE", "CLARIFY", "SEARCH"]
 
 
 @dataclass
@@ -306,11 +302,6 @@ def is_comparison(query):
     return any(marker in q for marker in COMPARISON_MARKERS)
 
 
-def is_email_request(query):
-    q = query.lower().replace("ё", "е")
-    return any(pattern in q for pattern in EMAIL_PATTERNS)
-
-
 def needs_clarification(query):
     q = query.lower().replace("ё", "е").strip()
     lemmas = normalize_query(query)
@@ -382,10 +373,6 @@ def verify_answer_node(state):
     return state
 
 def route_query(state):
-    if is_email_request(state.query):
-        state.intent = "EMAIL"
-        return state
-
     if is_comparison(state.query):
         a, b = extract_comparison_entities(state.query)
         if a is not None and b is not None:
@@ -540,14 +527,6 @@ def retry_comparison(state):
     return state
 
 
-def draft_email(state):
-    if state.lang == "en":
-        state.answer = "The email draft is ready. Please add the recipient, subject, and your details before sending."
-    else:
-        state.answer = "Черновик письма готов. Добавь адресата, тему и свои данные перед отправкой."
-    return set_answer_metadata(state, "static_email", generation_called=False)
-
-
 def judge_comparison(state):
     if state.retrieval_ok:
         return state
@@ -633,8 +612,6 @@ def route_intent_edge(state):
         return "retrieve_search"
     if intent == "COMPARISON":
         return "retrieve_comparison"
-    if intent == "EMAIL":
-        return "draft_email"
     if intent == "CLARIFY":
         return "clarify"
     return "refuse"
@@ -675,7 +652,6 @@ agent_rag.add_node("judge_comparison", timed_node("judge_comparison", judge_comp
 agent_rag.add_node("retry_comparison", timed_node("retry_comparison", retry_comparison))
 agent_rag.add_node("generate_search_answer", timed_node("generate_search_answer", generate_search_answer))
 agent_rag.add_node("generate_comparison_answer", timed_node("generate_comparison_answer", generate_comparison_answer))
-agent_rag.add_node("draft_email", timed_node("draft_email", draft_email))
 agent_rag.add_node("clarify", timed_node("clarify", clarify_node))
 agent_rag.add_node("verify_answer", timed_node("verify_answer", verify_answer_node))
 agent_rag.add_node("refuse", timed_node("refuse", refuse_node))
@@ -691,7 +667,6 @@ agent_rag.add_edge("retry_search", "judge_search")
 agent_rag.add_edge("retrieve_comparison", "judge_comparison")
 agent_rag.add_conditional_edges("judge_comparison", judge_comparison_edge)
 agent_rag.add_edge("retry_comparison", "judge_comparison")
-agent_rag.add_edge("draft_email", END)
 agent_rag.add_edge("clarify", END)
 agent_rag.add_edge("refuse", END)
 agent_rag.add_conditional_edges("verify_answer", verify_router, {"escalate": "escalate", "end": END})
