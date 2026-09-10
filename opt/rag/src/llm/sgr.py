@@ -10,7 +10,6 @@ import time
 from typing import Optional
 from llama_cpp import Llama, LlamaGrammar
 
-from src.llm.client import build_clauses_text
 from src.retrieval.glossary import make_dict, detect_terms, format_definitions
 
 make_dict()
@@ -126,6 +125,7 @@ def generate_sgr(query, lang, ctx_ids, top_ctx=5):
         answer = "В предоставленных документах нет информации для ответа." if lang == "ru" else "No direct confirmation."
         return _empty_response(answer, lang=lang, source="no_context", found=False, defs=defs)
 
+    from src.llm.client import build_clauses_text
     clauses_text = build_clauses_text(selected)
     clauses_text = clauses_text[:3500]
 
